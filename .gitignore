@@ -1,0 +1,37 @@
+Notes.md
+
+# Data folder
+data/*
+!data/*README.md
+
+# Windows
+Thumbs.db
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+
+# VSCode
+.vscode/
+
+# Unit test / coverage reports
+.cache
+.pytest_cache/
+
+# Sphinx documentation
+docs/_build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# mkdocs documentation
+/site

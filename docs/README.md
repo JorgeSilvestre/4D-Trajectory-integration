@@ -3,7 +3,7 @@
 ## Data description
 
 ### Raw data
-- [OpenSky](./raw_data/opensky_network.md)
+- [OpenSky Network](./raw_data/opensky_network.md)
     - [State vectors](./raw_data/opensky_network.md#state-vectors)
     - [OpenSky flights API](./raw_data/opensky_network.md#flights-api)
 - [Eurocontrol's Network Manager](./raw_data/network_manager.md)

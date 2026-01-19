@@ -3,6 +3,8 @@ Notes.md
 # Data folder
 data/*
 !data/*README.md
+# Reports folder
+reports/*
 
 # Windows
 Thumbs.db

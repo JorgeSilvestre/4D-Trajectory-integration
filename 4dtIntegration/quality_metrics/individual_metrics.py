@@ -1,120 +1,13 @@
 import json
-import concurrent
 
-import numpy as np
 import pandas as pd
-import pyarrow.parquet
 from tqdm import tqdm
 
-from .. import utils
-from .. import paths
+from .. import paths, utils
+from ..data_cleaning.flight_plans import (nm_fdata_change_schema,
+                                          nm_fplan_change_schema)
 from ..data_cleaning.surveillance import op_vectors_change_schema
-from ..data_cleaning.weather import taf_change_schema 
-from ..data_cleaning.flight_plans import nm_fplan_change_schema, nm_fdata_change_schema 
-
-# np.seterr(invalid='raise')
-
-def calculate_metrics_fplan(date: str, state: str = 'clean') -> None:
-    # data = pd.read_parquet(NM_PARQUET_FPLAN_PATH / f'nm.fplan.{date}.parquet')
-    if state == 'clean':
-        filepath = paths.NM_FPLAN_METRICS_L1_PATH / f'fPlan.L1.{date}.json'
-        data = pd.read_parquet(paths.NM_PARQUET_FPLAN_PATH / f'nm.fplan.{date}.parquet')
-    elif state == 'raw':
-        filepath = paths.NM_FPLAN_METRICS_L0_PATH / f'fPlan.L0.{date}.json'
-        with open(paths.NM_JSON_FPLAN_PATH / f'flightDate={date}' / f'flightDate={date}.json', 'r', encoding='utf8') as file:
-            data = [json.loads(x) for x in file]
-        data = nm_fplan_change_schema(data)
-
-    results = {}
-    results['date'] = date
-    results['state'] = state
-    results['level'] = 'L0' if state=='raw' else 'L1'
-
-    results['num_messages'] = len(data)
-    results['num_flights'] = data.ifplId.nunique()
-    completitude = data.notnull().sum()
-    results['completitude'] = {col:val/len(data) for col, val in completitude.items()}
-    uniqueness = data.drop(['timestamp','estimatedOffBlockTime','totalEstimatedElapsedTime'], axis=1).nunique()
-    dups_columns = data.columns.difference(['uuid'])
-    results['duplicate_records'] = data.shape[0]-data.drop_duplicates(subset=dups_columns).shape[0]
-    results['uniqueness'] = {col:val for col, val in uniqueness.items()}
-    results['ranges'] = {
-        'timestamp_min':data.timestamp.min(),
-        'timestamp_max':data.timestamp.max(),
-        'offblockTime_min':data.estimatedOffBlockTime.min(),
-        'offblockTime_max':data.estimatedOffBlockTime.max(),
-    }
-
-    results['avg_messages_per_flight'] = data.groupby('ifplId').count().timestamp.mean()
-
-    results['flights_airport_dep'] = {col:val for col,val
-        in data.drop_duplicates(subset=['ifplId']).groupby('aerodromeOfDeparture').count().ifplId.items()}
-    results['flights_airport_dest'] = {col:val for col,val
-        in data.drop_duplicates(subset=['ifplId']).groupby('aerodromeOfDestination').count().ifplId.items()}
-    results['flights_airport_route'] = {'-'.join(col):val for col,val
-        in data.drop_duplicates(subset=['ifplId']).groupby(['aerodromeOfDeparture', 'aerodromeOfDestination']).count().ifplId.items()}
-
-    
-    if not filepath.parent.exists():
-        filepath.parent.mkdir(parents=True)
-    with open(filepath, 'w+', encoding='utf8') as file:
-        json.dump(results, file, indent=2, default=utils.custom_json_encoder)
-
-def calculate_metrics_fdata(date: str, state: str = 'clean') -> None:
-    # data = pd.read_parquet(NM_PARQUET_FDATA_PATH / f'nm.fData.{date}.parquet')
-    if state == 'clean':
-        filepath = paths.NM_FDATA_METRICS_L1_PATH / f'fData.L1.{date}.json'
-        data = pd.read_parquet(paths.NM_PARQUET_FDATA_PATH / f'nm.fdata.{date}.parquet')
-    elif state == 'raw':
-        filepath = paths.NM_FDATA_METRICS_L0_PATH / f'fData.L0.{date}.json'
-        data = []
-        file_list = list((paths.NM_JSON_FDATA_PATH / f'flightDate={date}').glob('*.json'))
-        for file_path in file_list:
-            with open(file_path, 'r', encoding='utf8') as file:
-                chunk = [json.loads(x) for x in file]
-                # chunk = json.load(file) # , separators=['\n',':']
-            chunk = nm_fdata_change_schema(chunk)
-            data.append(chunk)
-        data = pd.concat(data)
-
-    results = {}
-    results['date'] = date
-    results['state'] = state
-    results['level'] = 'L0' if state=='raw' else 'L1'
-    results['num_messages'] = len(data)
-    results['num_flights'] = data.ifplId.nunique()
-    completitude = data.notnull().sum()
-    results['completitude'] = {col:val/len(data) for col, val in completitude.items()}
-    uniqueness = data.drop(['actualTakeOffTime','actualTimeOfArrival','estimatedOffBlockTime',
-                            'estimatedTakeOffTime','estimatedTimeOfArrival','flightDataVersionNr',
-                            'routeLength'], axis=1).nunique()
-    dups_columns = data.columns.difference(['uuid'])
-    results['duplicate_records'] = data.shape[0]-data.drop_duplicates(subset=dups_columns).shape[0]
-    results['uniqueness'] = {col:val for col, val in uniqueness.items()}
-
-    results['ranges'] = {
-        'offblockTime_min':data.estimatedOffBlockTime.min(),
-        'offblockTime_max':data.estimatedOffBlockTime.max(),
-        'actualTakeOffTime_min':data.actualTakeOffTime.min(numeric_only=True),
-        'actualTakeOffTime_max':data.actualTakeOffTime.max(),
-        'actualTimeOfArrival_min':data.actualTimeOfArrival.min(),
-        'actualTimeOfArrival_max':data.actualTimeOfArrival.max(),
-        'estimatedTakeOffTime_min':data.estimatedTakeOffTime.min(),
-        'estimatedTakeOffTime_max':data.estimatedTakeOffTime.max(),
-        'estimatedTimeOfArrival_min':data.estimatedTimeOfArrival.min(),
-        'estimatedTimeOfArrival_max':data.estimatedTimeOfArrival.max(),
-    }
-
-    results['avg_messages_per_flight'] = data.groupby('ifplId').count().estimatedOffBlockTime.mean()
-    
-    if state == 'clean':
-        filepath = paths.NM_FDATA_METRICS_L1_PATH / f'fData.L1.{date}.json'
-    elif state == 'raw':
-        filepath = paths.NM_FDATA_METRICS_L0_PATH / f'fData.L0.{date}.json'
-    if not filepath.parent.exists():
-        filepath.parent.mkdir(parents=True)
-    with open(filepath, 'w+', encoding='utf8') as file:
-        json.dump(results, file, indent=2, default=utils.custom_json_encoder)
+from ..data_cleaning.weather import taf_change_schema
 
 def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
     if state == 'raw':
@@ -172,7 +65,108 @@ def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
     uniqueness = data[['icao24','callsign']].nunique()
     results['uniqueness'] = {col:val for col, val in uniqueness.items()}
 
+    if not output_path.parent.exists():
+        output_path.parent.mkdir(parents=True)
     with open(output_path, 'w+', encoding='utf8') as file:
+        json.dump(results, file, indent=2, default=utils.custom_json_encoder)
+
+def calculate_metrics_fplan(date: str, state: str = 'clean') -> None:
+    if state == 'clean':
+        filepath = paths.NM_FPLAN_METRICS_L1_PATH / f'fPlan.L1.{date}.json'
+        data = pd.read_parquet(paths.NM_PARQUET_FPLAN_PATH / f'nm.fplan.{date}.parquet')
+    elif state == 'raw':
+        filepath = paths.NM_FPLAN_METRICS_L0_PATH / f'fPlan.L0.{date}.json'
+        with open(paths.NM_JSON_FPLAN_PATH / f'flightDate={date}' / f'flightDate={date}.json', 'r', encoding='utf8') as file:
+            data = [json.loads(x) for x in file]
+        data = nm_fplan_change_schema(data)
+
+    results = {}
+    results['date'] = date
+    results['state'] = state
+    results['level'] = 'L0' if state=='raw' else 'L1'
+
+    results['num_messages'] = len(data)
+    results['num_flights'] = data.ifplId.nunique()
+    completitude = data.notnull().sum()
+    results['completitude'] = {col:val/len(data) for col, val in completitude.items()}
+    uniqueness = data.drop(['timestamp','estimatedOffBlockTime','totalEstimatedElapsedTime'], axis=1).nunique()
+    dups_columns = data.columns.difference(['uuid'])
+    results['duplicate_records'] = data.shape[0]-data.drop_duplicates(subset=dups_columns).shape[0]
+    results['uniqueness'] = {col:val for col, val in uniqueness.items()}
+    results['ranges'] = {
+        'timestamp_min':data.timestamp.min(),
+        'timestamp_max':data.timestamp.max(),
+        'offblockTime_min':data.estimatedOffBlockTime.min(),
+        'offblockTime_max':data.estimatedOffBlockTime.max(),
+    }
+
+    results['avg_messages_per_flight'] = data.groupby('ifplId').count().timestamp.mean()
+
+    results['flights_airport_dep'] = {col:val for col,val
+        in data.drop_duplicates(subset=['ifplId']).groupby('aerodromeOfDeparture').count().ifplId.items()}
+    results['flights_airport_dest'] = {col:val for col,val
+        in data.drop_duplicates(subset=['ifplId']).groupby('aerodromeOfDestination').count().ifplId.items()}
+    results['flights_airport_route'] = {'-'.join(col):val for col,val
+        in data.drop_duplicates(subset=['ifplId']).groupby(['aerodromeOfDeparture', 'aerodromeOfDestination']).count().ifplId.items()}
+
+    
+    if not filepath.parent.exists():
+        filepath.parent.mkdir(parents=True)
+    with open(filepath, 'w+', encoding='utf8') as file:
+        json.dump(results, file, indent=2, default=utils.custom_json_encoder)
+
+def calculate_metrics_fdata(date: str, state: str = 'clean') -> None:
+    if state == 'clean':
+        filepath = paths.NM_FDATA_METRICS_L1_PATH / f'fData.L1.{date}.json'
+        data = pd.read_parquet(paths.NM_PARQUET_FDATA_PATH / f'nm.fdata.{date}.parquet')
+    elif state == 'raw':
+        filepath = paths.NM_FDATA_METRICS_L0_PATH / f'fData.L0.{date}.json'
+        data = []
+        file_list = list((paths.NM_JSON_FDATA_PATH / f'flightDate={date}').glob('*.json'))
+        for file_path in file_list:
+            with open(file_path, 'r', encoding='utf8') as file:
+                chunk = [json.loads(x) for x in file]
+            chunk = nm_fdata_change_schema(chunk)
+            data.append(chunk)
+        data = pd.concat(data)
+
+    results = {}
+    results['date'] = date
+    results['state'] = state
+    results['level'] = 'L0' if state=='raw' else 'L1'
+    results['num_messages'] = len(data)
+    results['num_flights'] = data.ifplId.nunique()
+    completitude = data.notnull().sum()
+    results['completitude'] = {col:val/len(data) for col, val in completitude.items()}
+    uniqueness = data.drop(['actualTakeOffTime','actualTimeOfArrival','estimatedOffBlockTime',
+                            'estimatedTakeOffTime','estimatedTimeOfArrival','flightDataVersionNr',
+                            'routeLength'], axis=1).nunique()
+    dups_columns = data.columns.difference(['uuid'])
+    results['duplicate_records'] = data.shape[0]-data.drop_duplicates(subset=dups_columns).shape[0]
+    results['uniqueness'] = {col:val for col, val in uniqueness.items()}
+
+    results['ranges'] = {
+        'offblockTime_min':data.estimatedOffBlockTime.min(),
+        'offblockTime_max':data.estimatedOffBlockTime.max(),
+        'actualTakeOffTime_min':data.actualTakeOffTime.min(numeric_only=True),
+        'actualTakeOffTime_max':data.actualTakeOffTime.max(),
+        'actualTimeOfArrival_min':data.actualTimeOfArrival.min(),
+        'actualTimeOfArrival_max':data.actualTimeOfArrival.max(),
+        'estimatedTakeOffTime_min':data.estimatedTakeOffTime.min(),
+        'estimatedTakeOffTime_max':data.estimatedTakeOffTime.max(),
+        'estimatedTimeOfArrival_min':data.estimatedTimeOfArrival.min(),
+        'estimatedTimeOfArrival_max':data.estimatedTimeOfArrival.max(),
+    }
+
+    results['avg_messages_per_flight'] = data.groupby('ifplId').count().estimatedOffBlockTime.mean()
+    
+    if state == 'clean':
+        filepath = paths.NM_FDATA_METRICS_L1_PATH / f'fData.L1.{date}.json'
+    elif state == 'raw':
+        filepath = paths.NM_FDATA_METRICS_L0_PATH / f'fData.L0.{date}.json'
+    if not filepath.parent.exists():
+        filepath.parent.mkdir(parents=True)
+    with open(filepath, 'w+', encoding='utf8') as file:
         json.dump(results, file, indent=2, default=utils.custom_json_encoder)
 
 def calculate_metrics_taf(month: str, state: str = 'clean') -> None:

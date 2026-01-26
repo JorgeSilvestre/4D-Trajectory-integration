@@ -1,0 +1,20 @@
+{
+  "date": "2023-07-03",
+  "ifplId": "AT02608879",
+  "callsign": "IBS3722",
+  "icao24": "342104",
+  "aerodromeOfDeparture": "LEMD",
+  "aerodromeOfDestination": "EHAM",
+  "airline": "IBS",
+  "estimatedTakeOffTime": 1688360460,
+  "estimatedTimeOfArrival": 1688367180,
+  "actualTakeOffTime": 1688361420,
+  "actualTimeOfArrival": 1688368620,
+  "num_vectores": 1235,
+  "ts_start": 1688361609,
+  "ts_end": 1688369111,
+  "data_source_surveillance": "opensky",
+  "data_source_flights": "nm",
+  "flightState": "TERMINATED",
+  "trajectory_status": "L2_cleaned"
+}

@@ -36,6 +36,8 @@ def haversine_np(lat1: np.array, lon1: np.array, lat2: np.array = LEMD_LATITUDE,
     a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
     c = 2 * np.arcsin(np.sqrt(a))
     mi = 3959 * c
+    # Kilometers: 6371 
+    # Miles: 3956 
 
     if h1 is not None:
         mi = np.sqrt(np.power(mi,2) + np.power((h2-h1)/5280, 2))

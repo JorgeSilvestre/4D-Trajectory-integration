@@ -58,46 +58,15 @@ mapping_flightData = {
     'uuid'                    :'ps:FlightDataMessage.uuid',
 }
 
-# OpenSky Flights
-OP_FLIGHTS_RENAME = {
-    # 'icao24',
-    'firstSeen' : 'flightStart',
-    'estDepartureAirport' : 'departureAirport',
-    'lastSeen' : 'flightEnd',
-    'estArrivalAirport' : 'destinationAirport',
-    # 'callsign',
-    # 'flightDate',
-    # 'flightId',
-}
-
-# NM Flights
-NM_FLIGHTS_RENAME = {
-    'ifplId' : 'flightId',
-    # 'aircraftOperator',
-    # 'operatingAircraftOperator',
-    # 'actualTakeOffTime',
-    # 'actualTimeOfArrival',
-    # 'estimatedTakeOffTime',
-    # 'estimatedTimeOfArrival',
-    # 'flightState',
-    # 'flightDataVersionNr',
-    # 'icao24',
-    # 'callsign',
-    # 'estimatedOffBlockTime',
-    'aerodromeOfDeparture' : 'departureAirport',
-    'aerodromeOfDestination' : 'destinationAirport',
-}
-
 # L1 - Column order
 vector_attribute_names = [
     'timestamp',
     'icao24',
     'callsign',
-    'origin_country',
     'time_position',
     'last_contact',
-    'longitude',
     'latitude',
+    'longitude',
     'altitude',
     'baro_altitude',
     'geo_altitude',
@@ -107,7 +76,7 @@ vector_attribute_names = [
     'on_ground',
     'squawk'
 ]
-# Removed attributes: 'spi','sensors','position_source'
+# Removed attributes: 'spi','sensors','position_source','origin_country'
 
 flight_attribute_names = [
     'ifplId', 'icao24', 'callsign',
@@ -123,6 +92,12 @@ flight_attribute_names = [
     'aircraftType', 'routeLength', ]
 
 # DATA PROCESSING ----------------------------------------------------------------------------------
+
+from .trajectory_processing.sorting_algorithms import (
+    nearest_neighbours,
+    opt2,
+    opt2_progressive,
+    opt2_restricted) 
 
 # L1 - FLIGHT PLANS TIMEZONE ADJUSTMENT
 
@@ -142,14 +117,51 @@ THRESHOLD_GAP_TIME = 300
 THRESHOLD_CONTINUITY = 30
 
 # Trajectory sorting parameters
-TMA_AREA_MAX = 110
+TMA_AREA_MAX = 100
 TMA_AREA_MIN = 30
-AIRPORT_AREA = 5
+AIRPORT_AREA = 15
 
 HOLDING_ROTATION = 365
 LOOP_ROTATION = 180
 MIN_OSCILLATION = 10
 
+HOW_SORT = 'complete' # 'segmented'
+PRESORT = True
+PRESORT_ALG = {
+    'complete': {
+        'algorithm': nearest_neighbours,
+        'options': {}
+    }
+}
+SORT_ALG = {
+    'complete': {
+        'algorithm': opt2_progressive,
+        'options': { 
+            'n_closest' : 10,
+            'window_size' : 100,
+            'overlap' : 20,
+            'distance_function' : 'haversine',
+        },
+    },
+    'out': {
+        'algorithm': opt2,
+        'options': { 
+            'distance_function' : 'haversine',
+        },
+    },
+    'cruise': {
+        'algorithm': nearest_neighbours,
+        'options': { 
+            'distance_function' : 'haversine',
+        },
+    },
+    'in': {
+        'algorithm': opt2,
+        'options': { 
+            'distance_function' : 'haversine',
+        },
+    },
+}
 # Trajectory outliers parameters
 DIFF_SPEED_THRESHOLD = 0.5 # Km per second
 DIFF_ALTITUDE_THRESHOLD = 125  # Feet per second

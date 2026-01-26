@@ -10,6 +10,8 @@ from .. import params, paths
 from ..trajectory import Trajectory
 from ..utils import haversine_np, haversine_np_track
 
+from .sorting_algorithms import path_length, haversine_distance
+
 # Parámetros del proceso
 overlap_fast     = 5
 window_size_fast = 20
@@ -18,24 +20,152 @@ window_size_slow = 101
 
 # No se aplican
 # max_kchanges = 200
-max_iteraciones = 100
-
-airports = pd.read_parquet(paths.AIRPORTS_PATH)
+max_iteraciones = 1000
 
 
-def calculate_distance(array: np.array, angle = False) -> np.array:
-    array = array.astype('float32')
+def process_trajectories(date: str) -> None:
+    pass
 
-    if not angle:
-        distances = haversine_np(array[1:,0], array[1:,1],
-                                array[:-1,0], array[:-1,1],
-                                None, None, angle)
-    else: # Use track
-        distances = haversine_np_track(array[1:,0], array[1:,1],
-                                array[:-1,0], array[:-1,1],
-                                array[1:,2], array[:-1,2], angle)
+    # load trajectories
+    # for trajectory in trajectories:
+    #     trajectory = process_trajectory()
 
-    return np.concatenate([[0], distances])
+def process_trajectory(trajectory: Trajectory, mode, algorithm) -> Trajectory:
+    airports = pd.read_parquet(paths.AIRPORTS_PATH)
+
+    data = trajectory.vectors.copy().reset_index(drop=True)
+    data['old_index'] = pd.DataFrame(range(len(data)), dtype='Int32[pyarrow]')
+    data = data.drop_duplicates(subset=['latitude','longitude'])
+
+    # Calculate distances to airports
+    origin_airport = airports[airports.icao == trajectory.aerodromeOfDeparture].iloc[0]
+    origin_airport = origin_airport[['latitude','longitude']].to_numpy(dtype='float32')
+    destination_airport = airports[airports.icao == trajectory.aerodromeOfDestination].iloc[0]
+    destination_airport = destination_airport[['latitude','longitude']].to_numpy(dtype='float32')
+    
+    data['distance_org'] = haversine_distance(
+        data[['latitude','longitude']].to_numpy(dtype='float32'), 
+        origin_airport.reshape((1,2))
+        )#.astype('Float32[pyarrow]')
+    data['distance_dst'] = haversine_distance(
+        data[['latitude','longitude']].to_numpy(dtype='float32'), 
+        destination_airport.reshape((1,2))
+        )#.astype('Float32[pyarrow]')
+
+    ### Ground vectors in origin airport - By timestamp
+    ground_org = data[(data.distance_org<params.AIRPORT_AREA) & (data.on_ground)].copy()
+    ### Ground vectors in destination airport - By timestamp
+    ground_dst = data[(data.distance_dst<params.AIRPORT_AREA) & (data.on_ground)].copy()
+    if len(ground_org)>0:
+        data = data[~data.index.isin(ground_org.index)].copy()
+    if len(ground_dst)>0:
+        data = data[~data.index.isin(ground_dst.index)].copy()
+
+    # Add virtual first and last vectors at the airports
+    initial_vec = {
+        'latitude':origin_airport[0],
+        'longitude':origin_airport[1],
+        'distance_org':0.0}
+    final_vec = {
+        'latitude':destination_airport[0],
+        'longitude':destination_airport[1],
+        'distance_dst':0.0}
+
+    data.index = data.index+1
+    data = pd.concat([
+        pd.DataFrame(initial_vec, index=[0]),
+        data,
+        pd.DataFrame(final_vec, index=[data.index.max()+1]),
+    ])
+
+    if mode == 'complete':
+        data = sort_trajectory_complete(data, algorithm['complete'])
+    elif mode == 'segmented':
+        data = sort_trajectory_segmented(data, algorithm)
+    
+    data = pd.concat(
+        [ground_org,
+        data,
+        ground_dst,]
+    ).dropna(subset='old_index').reset_index(drop=True)
+
+    return data
+
+def sort_trajectory_complete(data: pd.DataFrame, algorithm_conf) -> pd.DataFrame:
+    algorithm = algorithm_conf['algorithm']
+    config = algorithm_conf['options']
+    sorted_tray =  algorithm(data, **config)
+    old_distance = path_length(data[['latitude', 'longitude']].to_numpy(dtype='float32')[1:-1,:], 
+                               distance_function='haversine')
+    new_distance = path_length(sorted_tray[['latitude', 'longitude']].to_numpy(dtype='float32')[1:-1,:], 
+                               distance_function='haversine')
+    print(old_distance, 'Mi ->', new_distance, f'Mi (-{((old_distance-new_distance)/old_distance):.2%})')
+    
+    return sorted_tray if new_distance < old_distance else data
+
+def sort_trajectory_segmented(data: pd.DataFrame, algorithm_conf) -> pd.DataFrame:
+    origin = data.iloc[[0]]
+    destination = data.iloc[[-1]]
+    ### Maneuver segments - NV or by timestamp
+    maneuver_org = data[data.distance_org<(params.TMA_AREA_MAX/2)].copy()
+    ### Cruise segment - Distance to destination
+    maneuver_dst = data[data.distance_dst<params.TMA_AREA_MAX].copy()
+    ids = set(maneuver_org.index.to_list()+maneuver_dst.index.to_list())
+    # ids.remove(0)
+    # ids.remove(data.index.max())
+    cruise = data[~(data.index.isin(ids))]
+
+    overlap = 5
+
+    ######################### Presort #########################
+
+    ######################### Sort #########################
+    maneuver_org = pd.concat([maneuver_org, destination])
+    sort_trajectory_complete(maneuver_org, algorithm_conf['out']).iloc[:-1]
+                             
+    cruise = pd.concat([maneuver_org[-overlap:], cruise, destination])
+    cruise = sort_trajectory_complete(cruise, algorithm_conf['cruise']).iloc[:-1]
+
+    maneuver_dst = pd.concat([cruise[-overlap:], maneuver_dst])
+    maneuver_dst = sort_trajectory_complete(maneuver_dst, algorithm_conf['in'])
+
+    data = pd.concat([
+        maneuver_org.iloc[:-overlap],
+        cruise.iloc[:-overlap],
+        maneuver_dst,
+    ])
+
+    return data
+
+def calculate_max_rotation(tracks: pd.Series):
+    if len(tracks) < 2:
+        return 0.0
+    deltas = tracks.diff().dropna()
+    deltas = (deltas + 180) % 360 - 180
+
+    turn_right = (deltas[deltas>0].sum()) 
+    turn_left = -(deltas[deltas<0].sum()) 
+    
+    return max(turn_right, turn_left)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def calculate_distance(array: np.array, angle = False) -> np.array:
@@ -205,7 +335,7 @@ def sort_nearest_vector(array: np.array, stop: str = 'undefined') -> np.array:
                                       x[lat_index], x[lon_index]))
     distances = np.array(distances)
 
-    # Starting from the first vector, closest vector is recursively identified,
+    # Starting from the first vector, closest vector is iteratively identified,
     # excluding those that were already visited
     mins = [0]
     # Mask used to hide visited vectors
@@ -354,6 +484,7 @@ def sort_trajectory(trajectory: Trajectory) -> Trajectory:
         data : Trajectory
             Dataframe con los vectores ordenados por timestamp
     '''
+    airports = pd.read_parquet(paths.AIRPORTS_PATH)
     ### Duplicated position vectors
     # Opensky keeps emitting the latest position for few iterations if no new data have been received.
     # However, the position is not real and should be removed during cleaning. The downside is that the

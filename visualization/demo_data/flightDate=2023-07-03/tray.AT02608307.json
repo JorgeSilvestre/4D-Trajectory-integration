@@ -1,0 +1,20 @@
+{
+  "date": "2023-07-03",
+  "ifplId": "AT02608307",
+  "callsign": "DLH2XN",
+  "icao24": "3C65CB",
+  "aerodromeOfDeparture": "EDDF",
+  "aerodromeOfDestination": "EGLL",
+  "airline": "DLH",
+  "estimatedTakeOffTime": 1688353920,
+  "estimatedTimeOfArrival": 1688357820,
+  "actualTakeOffTime": 1688353860,
+  "actualTimeOfArrival": 1688358480,
+  "num_vectores": 927,
+  "ts_start": 1688353546,
+  "ts_end": 1688358471,
+  "data_source_surveillance": "opensky",
+  "data_source_flights": "nm",
+  "flightState": "TERMINATED",
+  "trajectory_status": "L2_cleaned"
+}

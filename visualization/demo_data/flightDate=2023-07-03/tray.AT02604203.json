@@ -1,0 +1,20 @@
+{
+  "date": "2023-07-03",
+  "ifplId": "AT02604203",
+  "callsign": "ANE60PM",
+  "icao24": "34604B",
+  "aerodromeOfDeparture": "EDDF",
+  "aerodromeOfDestination": "LEMD",
+  "airline": "ANE",
+  "estimatedTakeOffTime": 1688352300,
+  "estimatedTimeOfArrival": 1688360160,
+  "actualTakeOffTime": 1688352540,
+  "actualTimeOfArrival": 1688360520,
+  "num_vectores": 1641,
+  "ts_start": 1688351982,
+  "ts_end": 1688360760,
+  "data_source_surveillance": "opensky",
+  "data_source_flights": "nm",
+  "flightState": "TERMINATED",
+  "trajectory_status": "L2_cleaned"
+}

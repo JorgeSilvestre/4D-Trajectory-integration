@@ -2,8 +2,6 @@ import datetime
 
 import pandas as pd
 
-from .. import params
-from .. import utils
 from .. import paths
 
 def _extract_temps(temp_records):
@@ -54,7 +52,6 @@ def taf_change_schema(data: pd.DataFrame)  -> pd.DataFrame:
     data['wind_shear_dir_degrees'] = data.wind_shear_dir_degrees.astype('int32[pyarrow]')
     data['wind_shear_speed_kt'] = data.wind_shear_speed_kt.astype('int32[pyarrow]')
     data['vert_vis_ft'] = data.vert_vis_ft.astype('int32[pyarrow]')
-
     data['altim_in_hg'] = data.altim_in_hg.astype('float32[pyarrow]')
     data['visibility_statute_mi'] = data.visibility_statute_mi.astype('float32[pyarrow]')
 
@@ -99,9 +96,9 @@ def taf_clean_parquet(month: str) -> None:
     for col in ['sky_condition','turbulence_condition','icing_condition','temperature']:
         data[col] = data[col].apply(lambda x: x if len(x)>0 else pd.NA)
 
-    folder = paths.TAF_PARQUET_PATH
-    if not folder.exists():
-        folder.mkdir(parents=True)
-    path = folder / f'taf.{month}.parquet'
-    data.to_parquet(path, index=False)
+    output_folder = paths.TAF_PARQUET_PATH
+    if not output_folder.exists():
+        output_folder.mkdir(parents=True)
+    output_file = output_folder / f'taf.{month}.parquet'
+    data.to_parquet(output_file, index=False)
 

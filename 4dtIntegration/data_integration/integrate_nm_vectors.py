@@ -1,6 +1,5 @@
 import pandas as pd
 import json
-from tqdm import tqdm
 import datetime
 
 from .. import params, paths, utils
@@ -28,7 +27,7 @@ def nm_merge_fp_fd(date: str) -> None:
     # fdata = fdata.loc[last_fdata]
     # Para evitar últimos FDATA que modifican actualTimeOfArrival
     last_fdata = []
-    for grid, gr in fdata.groupby('ifplId'):
+    for gr_id, gr in fdata.groupby('ifplId'):
         if len(gr[gr.flightState == 'TERMINATED'])>1:
             l = gr[gr.flightState == 'TERMINATED'].iloc[0]
         else:
@@ -55,13 +54,6 @@ def nm_merge_fp_fd(date: str) -> None:
     flights['aircraftType'] = flights.aircraftType_y.combine_first(flights.aircraftType_x)
     flights = flights.drop(['aircraftType_x', 'aircraftType_y'], axis = 1)
 
-    # Use only flights that end in date
-    # -- This situation is not possible due to how flight plan messages are partitioned
-    # flights = flights[flights.actualTimeOfArrival.between(
-    #     date_dt.timestamp(),
-    #     (date_dt+datetime.timedelta(days=1,seconds=-1)).timestamp())
-    # ]
-
     # Ensure that joined FP-FD pairs refer to the same flight (due to ifplId reutilization)
     flights = flights[(flights.actualTakeOffTime > flights.estimatedOffBlockTime - 24*3600) &
                       (flights.actualTimeOfArrival < flights.estimatedOffBlockTime + 2*24*3600)]
@@ -74,11 +66,11 @@ def nm_merge_fp_fd(date: str) -> None:
     # Sort columns
     flights = flights[params.flight_attribute_names]
 
-    folder = paths.NM_PARQUET_FLIGHTS_PATH
-    if not folder.exists():
-        folder.mkdir(parents=True)
-    path = paths.NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet'
-    flights.to_parquet(path, index=False)
+    output_folder = paths.NM_PARQUET_FLIGHTS_PATH
+    if not output_folder.exists():
+        output_folder.mkdir(parents=True)
+    output_file = paths.NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet'
+    flights.to_parquet(output_file, index=False)
 
 def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), airports_dest: list|tuple = tuple()) -> None:
     """Join flight data and state vectors to identify individual trajectories
@@ -91,23 +83,21 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
 
     integration_metrics = {}
 
-    ## Data load --------------------------------------------------------------
+    ## Load -------------------------------------------------------------------
 
     # Flight data
     filters = []
-    # Filter by flight state
     filters.append(('flightState','in',('TERMINATED','ATC_ACTIVATED','TATC_ACTIVATED')))
-    # Filter by airports
     if airports_dep:
         filters.append(('aerodromeOfDeparture','in',airports_dep))
     if airports_dest:
         filters.append(('aerodromeOfDestination','in',airports_dep))
     flights = pd.read_parquet(paths.NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet',
                               engine='pyarrow', dtype_backend='pyarrow', filters=filters)
-    integration_metrics['num_flights_initial'] = flights.shape[0]
+    integration_metrics['num_flights_initial'] = len(flights)
     # Remove flights with the same origin and destination
     flights = flights[flights.aerodromeOfDeparture != flights.aerodromeOfDestination]
-    integration_metrics['num_flights'] = flights.shape[0]
+    integration_metrics['num_flights'] = len(flights)
     integration_metrics['returned_flights'] = integration_metrics['num_flights_initial'] - integration_metrics['num_flights']
 
     # OpenSky data
@@ -133,11 +123,11 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
     integration_metrics['num_vectors'] = 0
     for idx, file_path in enumerate(file_paths):
         vectors = pd.read_parquet(file_path, engine='pyarrow', dtype_backend='pyarrow')
-        num_initial_vectors = vectors.shape[0]
+        num_initial_vectors = len(vectors)
 
         # Merge by icao24
         vectors_icao = vectors[vectors.icao24.isin(flights.icao24.unique())]
-        if vectors_icao.shape[0] == 0:
+        if len(vectors_icao) == 0:
             continue
         joined = pd.merge(vectors_icao.drop('callsign',axis=1), flights, on='icao24', how='inner')
         joined = joined[(joined.timestamp >= joined.actualTakeOffTime - params.TIME_SLACK) &
@@ -158,14 +148,14 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
         # joined_vectors_acc.append(joined_vectors)
 
         # Metrics
-        nvec = num_initial_vectors
-        nfl = flights.shape[0]
-        njvec = joined.shape[0]
-        njfl = joined_flights_acc[-1].shape[0]
-        print(f'{idx+1:>3}/{len(file_paths)}  {nvec:<15}{nfl:<15}{njvec:<15}'+
-              f'{njvec/nvec*100:<18.2f}{njfl:<15}{njfl/nfl*100:<18.2f}')
+        num_vec = num_initial_vectors
+        num_flight = len(flights)
+        num_joined_vec = len(joined)
+        num_joined_flight = len(joined_flights_acc[-1])
+        print(f'{idx+1:>3}/{len(file_paths)}  {num_vec:<15}{num_flight:<15}{num_joined_vec:<15}'+
+              f'{num_joined_vec/num_vec*100:<18.2f}{num_joined_flight:<15}{num_joined_flight/num_flight*100:<18.2f}')
         if idx<first_day_files:
-            integration_metrics['num_vectors'] += nvec
+            integration_metrics['num_vectors'] += num_vec
 
     ## Write data -------------------------------------------------------------
 
@@ -173,16 +163,16 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
         joined_vectors = pd.concat(joined_vectors_acc).drop_duplicates()
         joined_vectors = joined_vectors.sort_values(by=['ifplId', 'timestamp']).reset_index(drop=True)
         del joined_vectors_acc
-        integration_metrics['num_joined_vectors'] = joined_vectors.shape[0]
+        integration_metrics['num_joined_vectors'] = len(joined_vectors)
         integration_metrics['num_joined_flights'] = len(joined_vectors.ifplId.unique())
 
         # Remove trajectories with too few vectors
         too_few_vectors = joined_vectors.groupby('ifplId').count()
         too_few_vectors = too_few_vectors[too_few_vectors.icao24>=params.VECTOR_NUMBER_MIN]
         joined_vectors = joined_vectors[joined_vectors.ifplId.isin(too_few_vectors.index)]
-        integration_metrics['num_joined_vectors_final'] = joined_vectors.shape[0]
-        integration_metrics['num_joined_flights_final'] = too_few_vectors.shape[0]
-        integration_metrics['removed_short_trajectories'] = integration_metrics['num_joined_flights'] - too_few_vectors.shape[0]
+        integration_metrics['num_joined_vectors_final'] = len(joined_vectors)
+        integration_metrics['num_joined_flights_final'] = len(too_few_vectors)
+        integration_metrics['removed_short_trajectories'] = integration_metrics['num_joined_flights'] - len(too_few_vectors)
         del too_few_vectors
 
         # Write trajectory data
@@ -222,6 +212,8 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
                 json.dump(metadata, file, indent=2, default=utils.custom_json_encoder)
 
         # Write integration metrics
+        if not paths.INTEGRATION_METRICS_PATH.exists():
+            paths.INTEGRATION_METRICS_PATH.mkdir(parents=True)
         with open(paths.INTEGRATION_METRICS_PATH / f'integration.{date}.json', 'w+', encoding='utf8') as file:
             json.dump(integration_metrics, file, indent=2, default=utils.custom_json_encoder)
 

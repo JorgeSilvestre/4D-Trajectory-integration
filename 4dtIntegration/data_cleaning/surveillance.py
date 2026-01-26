@@ -14,25 +14,29 @@ mapping_opensky = {
 }
 
 def vectors_clean_parquet(date: str) -> None:
-    file_paths = list(paths.OPENSKY_RAW_VECTORS_PATH.glob(f'flightDate={date}/*.parquet'))
+    input_files = list(paths.OPENSKY_RAW_VECTORS_PATH.glob(f'flightDate={date}/*.parquet'))
 
-    dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
-    if not dir.exists():
-        dir.mkdir(parents=True)
-    for file_path in tqdm(file_paths, desc=f'{date} VECTORS | Clean  ', ncols=125, disable=False):
+    output_dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
+    for file_path in tqdm(input_files, desc=f'{date} VECTORS | Clean  ', ncols=125, disable=False):
         data = pd.read_parquet(file_path, engine='pyarrow', dtype_backend='pyarrow')
         data = op_vectors_change_schema(data)
         data = vectors_clean(data)
-        data.to_parquet(paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}' / file_path.name, index=False)
+        data.to_parquet(output_dir / file_path.name, index=False)
 
-def op_vectors_change_schema(data: pd.DataFrame)  -> pd.DataFrame:
+def op_vectors_change_schema(data: pd.DataFrame) -> pd.DataFrame:
     # Remove unused columns
-    data = data.drop(['sensors', 'spi', 'position_source'], axis=1)
+    data = data.drop(['sensors', 'spi', 'position_source', 'origin_country'], axis=1)
 
     # Rename vector attributes
     data = data.rename(columns=mapping_opensky)
 
     # Data types
+    data['icao24'] = data.icao24.astype('string[pyarrow]')
+    data['callsign'] = data.callsign.astype('string[pyarrow]')
+    data['squawk'] = data.squawk.astype('string[pyarrow]')
+
     data['longitude'] = data.longitude.astype('Float32[pyarrow]')
     data['latitude'] = data.latitude.astype('Float32[pyarrow]')
     data['baro_altitude'] = data.baro_altitude.astype('Float32[pyarrow]')
@@ -52,7 +56,7 @@ def vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
     Args:
         data: Dataframe with a day of vectors data
     """
-
+    
     # Remove vectors with null or incorrect values
     to_remove = (
         data.longitude.isna() |
@@ -75,7 +79,6 @@ def vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
 
     # Define NA value for text attributes
     data['callsign'] = data.callsign.replace('', pd.NA)
-    data['origin_country'] = data.origin_country.replace('', pd.NA)
 
     # Sort vectors
     data = data.sort_values(by=['icao24','time_position'])

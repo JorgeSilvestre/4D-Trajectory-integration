@@ -1,0 +1,20 @@
+{
+  "date": "2023-07-03",
+  "ifplId": "AT02608955",
+  "callsign": "DLH8FF",
+  "icao24": "3C6669",
+  "aerodromeOfDeparture": "EDDF",
+  "aerodromeOfDestination": "LIRF",
+  "airline": "DLH",
+  "estimatedTakeOffTime": 1688355480,
+  "estimatedTimeOfArrival": 1688360820,
+  "actualTakeOffTime": 1688355840,
+  "actualTimeOfArrival": 1688361060,
+  "num_vectores": 979,
+  "ts_start": 1688355434,
+  "ts_end": 1688361084,
+  "data_source_surveillance": "opensky",
+  "data_source_flights": "nm",
+  "flightState": "TERMINATED",
+  "trajectory_status": "L2_cleaned"
+}

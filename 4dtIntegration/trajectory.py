@@ -4,8 +4,8 @@ from datetime import datetime
 
 import pandas as pd
 
-import utils
-from paths import *
+from . import utils
+from .paths import *
 
 # TODO Reflejar de alguna forma el estado de la trayectoria o las transformaciones aplicadas
 
@@ -57,16 +57,18 @@ class Trajectory():
     # raw_vectors: pd.DataFrame = vectors.copy()
 
 
-    def __init__(self, trajectoryId, date, state='raw'):
+    def __init__(self, trajectoryId, date, state='raw', demo_folder=None):
         if state == 'raw':
             folder = NM_TRAJECTORIES_RAW_PATH 
         elif state == 'clean':
             folder = NM_TRAJECTORIES_PATH
+        elif state == 'demo':
+            folder = Path(demo_folder)
 
-        self.vectors = pd.read_parquet(folder / f'flightDate={date}' / f'tray.{date}.parquet', 
+        self.vectors = pd.read_parquet(folder /  f'tray.{date}.parquet',
                                     engine='pyarrow', dtype_backend='pyarrow',
                                     filters=[('ifplId', '==', trajectoryId)])
-        with open(folder / f'tray.{trajectoryId}.json', 'r', encoding='utf8') as file:
+        with open(folder / f'flightDate={date}' /f'tray.{trajectoryId}.json', 'r', encoding='utf8') as file:
             metadata = json.load(file)
         for k, v in metadata.items():
             setattr(self, k, v)

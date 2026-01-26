@@ -5,6 +5,11 @@ data/*
 !data/*README.md
 # Reports folder
 reports/*
+# Credentials folder
+keys/*
+
+old/*
+pruebas/*
 
 # Windows
 Thumbs.db

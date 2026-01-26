@@ -1,12 +1,8 @@
 import datetime
-import json
 
 import pandas as pd
 
-from .. import params
-from .. import paths
-
-
+from .. import params, paths
 
 # OpenSky flights not used
 def opensky_integrate_flight_vectors(date: str, source: str, airports_dep: list|tuple = tuple()) -> None:

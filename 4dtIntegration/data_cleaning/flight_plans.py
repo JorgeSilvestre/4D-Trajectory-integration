@@ -3,51 +3,52 @@ import json
 
 import pandas as pd
 from tqdm import tqdm
-from .. import params, utils, paths
+
+from .. import params, paths
 
 # Network Manager
 mapping_flightPlan = {
-    'ifplId'                    :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.ifplId',
-    'timestamp'                 :'ps:FlightPlanMessage.timestamp',
-    'callsign'                  :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.aircraftId',
-    'icao24'                    :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.aircraftAddress',
-    'aerodromeOfDeparture'      :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aerodromeOfDeparture.icaoId',
-    'aerodromeOfDestination'    :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aerodromesOfDestination.aerodromeOfDestination.icaoId',
-    'estimatedOffBlockTime'     :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.estimatedOffBlockTime',
-    'operator'                  :'ps:FlightPlanMessage.flightPlanData.structured.aircraftOperator',
-    'operatingOperator'         :'ps:FlightPlanMessage.flightPlanData.structured.operatingAircraftOperator',
-    'registrationMark'          :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.registrationMark',
-    'ssr'                       :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.ssrInfo.code',
-    'flightRules'               :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.flightRules',
-    'flightType'                :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.flightType',
-    'aircraftType'              :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftType.icaoId',
-    'totalEstimatedElapsedTime' :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.totalEstimatedElapsedTime',
-    'wakeTurbulenceCategory'    :'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.wakeTurbulenceCategory',
-    'uuid'                      :'ps:FlightPlanMessage.uuid',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.ifplId' : 'ifplId',
+    'ps:FlightPlanMessage.timestamp' : 'timestamp',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.aircraftId' : 'callsign',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.aircraftAddress' : 'icao24',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aerodromeOfDeparture.icaoId' : 'aerodromeOfDeparture',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aerodromesOfDestination.aerodromeOfDestination.icaoId' : 'aerodromeOfDestination',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.estimatedOffBlockTime' : 'estimatedOffBlockTime',
+    'ps:FlightPlanMessage.flightPlanData.structured.aircraftOperator' : 'operator',
+    'ps:FlightPlanMessage.flightPlanData.structured.operatingAircraftOperator' : 'operatingOperator',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.registrationMark' : 'registrationMark',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.ssrInfo.code' : 'ssr',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.flightRules' : 'flightRules',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.flightType' : 'flightType',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftType.icaoId' : 'aircraftType',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.totalEstimatedElapsedTime' : 'totalEstimatedElapsedTime',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.wakeTurbulenceCategory' : 'wakeTurbulenceCategory',
+    'ps:FlightPlanMessage.uuid' : 'uuid',
 }
 
 mapping_flightData = {
-    'ifplId'                  :'ps:FlightDataMessage.flightData.flightId.id',
-    'timestamp'               :'ps:FlightDataMessage.timestamp',
-    'callsign'                :'ps:FlightDataMessage.flightData.flightId.keys.aircraftId',
-    'icao24'                  :'ps:FlightDataMessage.flightData.aircraftAddress',
-    'aerodromeOfDeparture'    :'ps:FlightDataMessage.flightData.flightId.keys.aerodromeOfDeparture',
-    'aerodromeOfDestination'  :'ps:FlightDataMessage.flightData.flightId.keys.aerodromeOfDestination',
-    'estimatedOffBlockTime'   :'ps:FlightDataMessage.flightData.flightId.keys.estimatedOffBlockTime',
-    'operator'                :'ps:FlightDataMessage.flightData.aircraftOperator',
-    'operatingOperator'       :'ps:FlightDataMessage.flightData.operatingAircraftOperator',
-    'estimatedTakeOffTime'    :'ps:FlightDataMessage.flightData.estimatedTakeOffTime',
-    'estimatedTimeOfArrival'  :'ps:FlightDataMessage.flightData.estimatedTimeOfArrival',
-    'actualOffBlockTime'      :'ps:FlightDataMessage.flightData.actualOffBlockTime',
-    'actualTakeOffTime'       :'ps:FlightDataMessage.flightData.actualTakeOffTime',
-    'actualTimeOfArrival'     :'ps:FlightDataMessage.flightData.actualTimeOfArrival',
-    'calculatedTakeOffTime'   :'ps:FlightDataMessage.flightData.calculatedTakeOffTime',
-    'calculatedTimeOfArrival' :'ps:FlightDataMessage.flightData.calculatedTimeOfArrival',
-    'flightState'             :'ps:FlightDataMessage.flightData.flightState',
-    'flightDataVersionNr'     :'ps:FlightDataMessage.flightData.flightDataVersionNr',
-    'aircraftType'            :'ps:FlightDataMessage.flightData.aircraftType',
-    'routeLength'             :'ps:FlightDataMessage.flightData.routeLength',
-    'uuid'                    :'ps:FlightDataMessage.uuid',
+    'ps:FlightDataMessage.flightData.flightId.id' : 'ifplId',
+    'ps:FlightDataMessage.timestamp' : 'timestamp',
+    'ps:FlightDataMessage.flightData.flightId.keys.aircraftId' : 'callsign',
+    'ps:FlightDataMessage.flightData.aircraftAddress' : 'icao24',
+    'ps:FlightDataMessage.flightData.flightId.keys.aerodromeOfDeparture' : 'aerodromeOfDeparture',
+    'ps:FlightDataMessage.flightData.flightId.keys.aerodromeOfDestination' : 'aerodromeOfDestination',
+    'ps:FlightDataMessage.flightData.flightId.keys.estimatedOffBlockTime' : 'estimatedOffBlockTime',
+    'ps:FlightDataMessage.flightData.aircraftOperator' : 'operator',
+    'ps:FlightDataMessage.flightData.operatingAircraftOperator' : 'operatingOperator',
+    'ps:FlightDataMessage.flightData.estimatedTakeOffTime' : 'estimatedTakeOffTime',
+    'ps:FlightDataMessage.flightData.estimatedTimeOfArrival' : 'estimatedTimeOfArrival',
+    'ps:FlightDataMessage.flightData.actualOffBlockTime' : 'actualOffBlockTime',
+    'ps:FlightDataMessage.flightData.actualTakeOffTime' : 'actualTakeOffTime',
+    'ps:FlightDataMessage.flightData.actualTimeOfArrival' : 'actualTimeOfArrival',
+    'ps:FlightDataMessage.flightData.calculatedTakeOffTime' : 'calculatedTakeOffTime',
+    'ps:FlightDataMessage.flightData.calculatedTimeOfArrival' : 'calculatedTimeOfArrival',
+    'ps:FlightDataMessage.flightData.flightState' : 'flightState',
+    'ps:FlightDataMessage.flightData.flightDataVersionNr' : 'flightDataVersionNr',
+    'ps:FlightDataMessage.flightData.aircraftType' : 'aircraftType',
+    'ps:FlightDataMessage.flightData.routeLength' : 'routeLength',
+    'ps:FlightDataMessage.uuid' : 'uuid',
 }
 
 def flatten_dict(data: dict, paths: list) -> list:
@@ -93,8 +94,8 @@ def convert_time_column(column):
 ### FLIGHT PLANS ----------------------------------------------------------------------------------
 
 def nm_fplan_change_schema(data: pd.DataFrame)  -> pd.DataFrame:
-    data = flatten_dict(data, mapping_flightPlan.values())
-    column_names = mapping_flightPlan.keys()
+    data = flatten_dict(data, mapping_flightPlan.keys())
+    column_names = mapping_flightPlan.values()
     fplan = pd.DataFrame(data, columns=column_names)
     del data
 
@@ -108,12 +109,12 @@ def nm_fplan_change_schema(data: pd.DataFrame)  -> pd.DataFrame:
         'wakeTurbulenceCategory', 'uuid', 'registrationMark']
     for c in string_columns:
         fplan[c] = fplan[c].astype('string[pyarrow]')
-
+    
     return fplan
 
 def nm_fdata_change_schema(data: pd.DataFrame)  -> pd.DataFrame:
-    data = flatten_dict(data, mapping_flightData.values())
-    column_names = mapping_flightData.keys()
+    data = flatten_dict(data, mapping_flightData.keys())
+    column_names = mapping_flightData.values()
     fdata = pd.DataFrame(data, columns = column_names)
     del data
     
@@ -143,17 +144,16 @@ def nm_fplan_json_to_parquet(date: str) -> None:
         date: String with a date in format 'YYYY-MM-DD'
     """
 
-    ## Data load --------------------------------------------------------------
-    folder = paths.NM_JSON_FPLAN_PATH / f'flightDate={date}'
-    # with open(folder / f'nm.fplan.{date}.json', 'r', encoding='utf8') as file:
-        # data = json.load(file) # , separators=['\n',':']
-    with open(folder / f'flightDate={date}.json', 'r', encoding='utf8') as file:
+    ## Load -------------------------------------------------------------------
+    input_file = paths.NM_JSON_FPLAN_PATH / f'flightDate={date}' / f'flightDate={date}.json'
+    with open(input_file, 'r', encoding='utf8') as file:
         data = [json.loads(x) for x in file]
-
     fplan = nm_fplan_change_schema(data)
     del data
 
-    # Clean duplicates
+    ## Cleaning ---------------------------------------------------------------
+
+    # Remove duplicates
     dups_columns = fplan.columns.difference(['uuid'])
     fplan = fplan.drop_duplicates(subset=dups_columns)
 
@@ -177,14 +177,15 @@ def nm_fplan_json_to_parquet(date: str) -> None:
         fplan[pc] = fplan.groupby('ifplId_group')[pc].ffill()
     fplan = fplan.drop('ifplId_group', axis=1)
 
+    # Final clean
     fplan = fplan.drop_duplicates(subset=dups_columns, keep='last').reset_index(drop=True)
 
-    ## Save data --------------------------------------------------------------
-    folder = paths.NM_PARQUET_FPLAN_PATH
-    if not folder.exists():
-        folder.mkdir(parents=True)
-    path = folder / f'nm.fplan.{date}.parquet'
-    fplan.to_parquet(path, index=False)
+    ## Save data -------------------------------------------------------------
+    output_dir = paths.NM_PARQUET_FPLAN_PATH
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
+    output_file = output_dir / f'nm.fplan.{date}.parquet'
+    fplan.to_parquet(output_file, index=False)
 
 def nm_fdata_json_to_parquet(date: str) -> None:
     """Parse NM flight data from a JSON file and write into a parquet file
@@ -193,28 +194,29 @@ def nm_fdata_json_to_parquet(date: str) -> None:
         date: String with a date in format 'YYYY-MM-DD'
     """
 
-    ## Data load --------------------------------------------------------------
+    ## Load -------------------------------------------------------------------
     data = []
     file_list = list((paths.NM_JSON_FDATA_PATH / f'flightDate={date}').glob('*.json'))
     for file_path in tqdm(file_list, desc=f'{date} FDATA   | Clean  ', ncols=125):
         with open(file_path, 'r', encoding='utf8') as file:
             chunk = [json.loads(x) for x in file]
-            # chunk = json.load(file) # , separators=['\n',':']
         chunk = nm_fdata_change_schema(chunk)
         data.append(chunk)
     fdata = pd.concat(data)
     del data
 
-    ## Data cleaning ----------------------------------------------------------
+    ## Cleaning ---------------------------------------------------------------
 
-    # Clean duplicates
+    # Remove duplicates
     dups_columns = fdata.columns.difference(['uuid'])
     fdata = fdata.drop_duplicates(subset=dups_columns)
+
+    # Sort messages
     fdata = fdata.sort_values(by=['ifplId', 'flightDataVersionNr']).reset_index(drop=True)
 
     # Data format
     fdata['icao24'] = fdata.icao24.str.upper().str.strip()
-    fdata['callsign'] = fdata.callsign.str.strip()
+    fdata['callsign'] = fdata.callsign.str.upper().str.strip()
     fdata['aerodromeOfDeparture'] = fdata.aerodromeOfDeparture.str.strip()
     fdata['aerodromeOfDestination'] = fdata.aerodromeOfDestination.str.strip()
 
@@ -228,12 +230,12 @@ def nm_fdata_json_to_parquet(date: str) -> None:
     # Final clean
     fdata = fdata.drop_duplicates(keep='last').reset_index(drop=True)
 
-    ### Save data ####################
-    folder = paths.NM_PARQUET_FDATA_PATH
-    if not folder.exists():
-        folder.mkdir(parents=True)
-    path = folder / f'nm.fdata.{date}.parquet'
-    fdata.to_parquet(path, index=False)
+    ### Save data -------------------------------------------------------------
+    output_dir = paths.NM_PARQUET_FDATA_PATH
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
+    output_file = output_dir / f'nm.fdata.{date}.parquet'
+    fdata.to_parquet(output_file, index=False)
 
 ### FLIGHTS ---------------------------------------------------------------------------------------
 

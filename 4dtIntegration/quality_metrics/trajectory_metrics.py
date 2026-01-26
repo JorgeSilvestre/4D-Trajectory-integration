@@ -1,14 +1,9 @@
 import json
-import concurrent
 
 import numpy as np
 import pandas as pd
-import pyarrow.parquet
-from tqdm import tqdm
 
-from .. import utils
-from .. import paths
-from .. import params
+from .. import params, paths, utils
 
 airports = pd.read_parquet(paths.AIRPORTS_PATH)
 
@@ -91,6 +86,8 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
         results['last_altitude_before_ground'] = None
 
     if trayType == 'raw':
+        if not paths.NM_TRAYS_METRICS_L2_PATH.exists():
+            paths.NM_TRAYS_METRICS_L2_PATH.mkdir(parents=True)
         with open(paths.NM_TRAYS_METRICS_L2_PATH / f'tray.{date}.{trajectoryId}.json', 'w+', encoding='utf8') as file:
             json.dump(results, file, indent=2, default=utils.custom_json_encoder)
             # try:
@@ -100,6 +97,8 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
     elif trayType == 'clean':
         results['sorted_vectors'] = get_resorted_vectors(data)
         results['timestamp_variation'] = get_timestamp_variation(data)
+        if not paths.NM_TRAYS_METRICS_L3_PATH.exists():
+            paths.NM_TRAYS_METRICS_L3_PATH.mkdir(parents=True)
         with open(paths.NM_TRAYS_METRICS_L3_PATH / f'tray.{date}.{trajectoryId}.json', 'w+', encoding='utf8') as file:
             json.dump(results, file, indent=2, default=utils.custom_json_encoder)    
 

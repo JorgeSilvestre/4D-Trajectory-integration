@@ -1,0 +1,20 @@
+{
+  "date": "2023-07-03",
+  "ifplId": "AT02603928",
+  "callsign": "BAW2AM",
+  "icao24": "407463",
+  "aerodromeOfDeparture": "EHAM",
+  "aerodromeOfDestination": "EGLL",
+  "airline": "BAW",
+  "estimatedTakeOffTime": 1688354880,
+  "estimatedTimeOfArrival": 1688357640,
+  "actualTakeOffTime": 1688356140,
+  "actualTimeOfArrival": 1688359440,
+  "num_vectores": 683,
+  "ts_start": 1688355796,
+  "ts_end": 1688359649,
+  "data_source_surveillance": "opensky",
+  "data_source_flights": "nm",
+  "flightState": "TERMINATED",
+  "trajectory_status": "L2_cleaned"
+}

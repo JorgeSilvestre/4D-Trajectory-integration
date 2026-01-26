@@ -1,14 +1,14 @@
-import datetime
 import json
 
 import pandas as pd
-from tqdm import tqdm
-from .. import params, utils, paths
+from .. import paths
 
 def airports_json_to_parquet() -> None:
     """Parse and transforms airport data from a CSV file and write into a parquet file
     """
-    with open(paths.AIRPORTS_RAW_PATH, 'r', encoding='utf8') as file:
+    # TODO: Cambiar al fichero CSV descargado desde OurAirports
+    # https://ourairports.com/help/data-dictionary.html
+    with open(paths.AIRPORTS_RAW_PATH / 'airports.json', 'r', encoding='utf8') as file:
         data = json.load(file)['rows']
     data = pd.DataFrame.from_dict(data)
     data['alt'] = data.alt.astype(int)

@@ -1,0 +1,20 @@
+{
+  "date": "2023-07-03",
+  "ifplId": "AT02609895",
+  "callsign": "BAW63GV",
+  "icao24": "406B62",
+  "aerodromeOfDeparture": "EGLL",
+  "aerodromeOfDestination": "LGAV",
+  "airline": "BAW",
+  "estimatedTakeOffTime": 1688359200,
+  "estimatedTimeOfArrival": 1688370540,
+  "actualTakeOffTime": 1688359260,
+  "actualTimeOfArrival": 1688370480,
+  "num_vectores": 1674,
+  "ts_start": 1688359577,
+  "ts_end": 1688370170,
+  "data_source_surveillance": "opensky",
+  "data_source_flights": "nm",
+  "flightState": "TERMINATED",
+  "trajectory_status": "L2_cleaned"
+}

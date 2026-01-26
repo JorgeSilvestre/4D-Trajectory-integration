@@ -1,0 +1,20 @@
+{
+  "date": "2023-07-03",
+  "ifplId": "AT02607961",
+  "callsign": "BAW903U",
+  "icao24": "407537",
+  "aerodromeOfDeparture": "EDDF",
+  "aerodromeOfDestination": "EGLL",
+  "airline": "BAW",
+  "estimatedTakeOffTime": 1688367240,
+  "estimatedTimeOfArrival": 1688371380,
+  "actualTakeOffTime": 1688368140,
+  "actualTimeOfArrival": 1688372700,
+  "num_vectores": 919,
+  "ts_start": 1688367573,
+  "ts_end": 1688372802,
+  "data_source_surveillance": "opensky",
+  "data_source_flights": "nm",
+  "flightState": "TERMINATED",
+  "trajectory_status": "L2_cleaned"
+}

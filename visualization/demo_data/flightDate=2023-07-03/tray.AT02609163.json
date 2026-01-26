@@ -1,0 +1,20 @@
+{
+  "date": "2023-07-03",
+  "ifplId": "AT02609163",
+  "callsign": "DLH6JA",
+  "icao24": "3C65C9",
+  "aerodromeOfDeparture": "EDDF",
+  "aerodromeOfDestination": "EGLL",
+  "airline": "DLH",
+  "estimatedTakeOffTime": 1688357520,
+  "estimatedTimeOfArrival": 1688361480,
+  "actualTakeOffTime": 1688357460,
+  "actualTimeOfArrival": 1688362200,
+  "num_vectores": 937,
+  "ts_start": 1688357165,
+  "ts_end": 1688362336,
+  "data_source_surveillance": "opensky",
+  "data_source_flights": "nm",
+  "flightState": "TERMINATED",
+  "trajectory_status": "L2_cleaned"
+}

@@ -1,8 +1,10 @@
 Notes.md
 
 # Data folder
-data/*
-!data/*README.md
+data/*/*/*
+!data/README.md
+!data/L1/airports/*
+
 # Reports folder
 reports/*
 # Credentials folder

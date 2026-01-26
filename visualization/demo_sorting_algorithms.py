@@ -4,6 +4,7 @@ sys.path.append('.')
 import streamlit as st
 
 import plotly.express as px
+from pathlib import Path
 
 from trajectoryIntegration import params, paths
 from trajectoryIntegration.trajectory import Trajectory
@@ -72,7 +73,8 @@ algorithm_conf = {
 
 @st.cache_data
 def load_data():
-    return {tr:Trajectory(tr, '2023-07-03', 'demo', demo_folder='./visualization/demo_data') 
+    data_folder = Path(__file__).resolve().parent / 'demo_data'
+    return {tr:Trajectory(tr, '2023-07-03', 'demo', data_folder) 
             for tr in traj_ids}
 
 trajectories = load_data()
@@ -134,7 +136,7 @@ def config_algorithm(mode):
             with st.container(border=True):
                 st.write('**Fly from departure airport**')
                 algorithm_out = st.selectbox(
-                    label='Algorithm', index=1, key='algorithm_out',
+                    label='Algorithm', index=0, key='algorithm_out',
                     options=algorithms.keys(),
                     format_func=lambda x: algorithms[x],
                 )
@@ -161,10 +163,10 @@ def config_algorithm(mode):
 with columns_content[0]:
     traj_id = st.selectbox(
         label=':material/flight_takeoff: Trajectory',
-        options=traj_ids, index=1,
+        options=traj_ids, index=0,
     )
     mode = st.selectbox(
-        label='Mode', index=1, key='mode',
+        label='Mode', index=0, key='mode',
         options=modes.keys(), 
         format_func=lambda x: modes[x],
     )

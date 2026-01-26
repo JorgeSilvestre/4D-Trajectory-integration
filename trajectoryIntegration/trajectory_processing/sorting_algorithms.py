@@ -19,6 +19,12 @@ def haversine_distance(coords1, coords2, unit='mi'):
         dist = 3959.87433 * c
     elif unit=='km':
         dist = 6372.8 * c
+    
+    # Altitude
+    if coords1.shape[1] == 3 and coords2.shape[1] == 3:
+        diff_alt = (coords2[:,2]-coords1[:,2])
+        dist = np.sqrt(np.power(dist, 2)+np.power(diff_alt, 2))
+
 
     # if len(coords1)==3 and len(coords2)==3:
     #     alt1, alt2 = coords1[2], coords2[2]

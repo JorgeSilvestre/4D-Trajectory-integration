@@ -121,18 +121,12 @@ TMA_AREA_MAX = 100
 TMA_AREA_MIN = 30
 AIRPORT_AREA = 15
 
+DETECT_LOOP = True
 HOLDING_ROTATION = 365
 LOOP_ROTATION = 180
 MIN_OSCILLATION = 10
 
 HOW_SORT = 'complete' # 'segmented'
-PRESORT = True
-PRESORT_ALG = {
-    'complete': {
-        'algorithm': nearest_neighbours,
-        'options': {}
-    }
-}
 SORT_ALG = {
     'complete': {
         'algorithm': opt2_progressive,
@@ -161,6 +155,31 @@ SORT_ALG = {
             'distance_function' : 'haversine',
         },
     },
+}
+PRESORT = True
+PRESORT_ALG = {
+    'complete': {
+        'algorithm': nearest_neighbours,
+        'options': { 
+            'distance_function' : 'haversine',
+        },
+    },
+    'out': {
+        'algorithm': opt2_progressive,
+        'options': { 
+            'n_closest' : 10,
+            'window_size' : 100,
+            'overlap' : 20,
+            'distance_function' : 'haversine',
+        },
+    },
+    'cruise': {
+        'algorithm': nearest_neighbours,
+        'options': { 
+            'distance_function' : 'haversine',
+        },
+    },
+    'in': {},
 }
 # Trajectory outliers parameters
 DIFF_SPEED_THRESHOLD = 0.5 # Km per second

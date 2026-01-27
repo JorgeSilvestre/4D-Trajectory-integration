@@ -43,7 +43,7 @@ def distance_matrix(positions, distance_function='euclidean'):
     
     return np.sqrt(np.sum(np.power(np.expand_dims(positions,2)-np.expand_dims(positions.transpose(),0), 2), axis=1))
 
-def path_length(positions, distance_function='euclidean'):
+def path_length(positions, distance_function='haversine'):
     if distance_function == 'euclidean':
         diffs = euclidean_distance(positions[:-1], positions[1:])
         return np.sum(diffs, axis=0)
@@ -80,7 +80,7 @@ def nearest_neighbours(df: pd.DataFrame, distance_function='haversine', **kwargs
 
     return df.iloc[order]
 
-def generate_changes(start:int, end:int, skip:int = 1) -> list[tuple[int,int]]:
+def _generate_changes(start:int, end:int, skip:int = 1) -> list[tuple[int,int]]:
     '''
         Genera reemplazos de cada elemento con cada uno de los elementos siguientes
         (sin contar el inmediatamente siguiente) en base a sus índices correlativos
@@ -105,7 +105,7 @@ def opt2(df: pd.DataFrame, distance_function='haversine', **kwargs):
     current_dist = path_length(array, distance_function)
     order = list(range(len(array)))
 
-    changes = generate_changes(0, len(array), 1)
+    changes = _generate_changes(0, len(array), 1)
     max_iteraciones = 100000
     for j in range(max_iteraciones):
         improvements = 0
@@ -131,7 +131,7 @@ def opt2_reversed(df: pd.DataFrame, distance_function='haversine', **kwargs):
 
     return df
 
-def generate_windows(data_size:int, window_size:int, overlap:int, min_index:int=0, max_index:int=0) -> tuple[tuple[int,int,int]]:
+def _generate_windows(data_size:int, window_size:int, overlap:int, min_index:int=0, max_index:int=0) -> tuple[tuple[int,int,int]]:
     '''Genera ventanas deslizantes a partir del tamaño de una estructura tabular
 
     Genera índices para las ventanas deslizantes de tamaño window_size aplicadas
@@ -166,7 +166,7 @@ def opt2_progressive(df: pd.DataFrame, window_size:int, overlap:int, distance_fu
     df = df.copy()
     if 'old_index' not in df.columns:
         df = df.reset_index(drop=False).rename(columns={'index':'old_index'})
-    windows = generate_windows(len(df), window_size, overlap)
+    windows = _generate_windows(len(df), window_size, overlap)
     for it, start, end in windows:
         df.iloc[start:end] = opt2(df.iloc[start:end], distance_function)
     return df
@@ -187,7 +187,7 @@ def opt2_restricted(df: pd.DataFrame, n_closest=10, distance_function='haversine
     current_dist = path_length(array, distance_function)
     order = df.index.to_list()
 
-    changes = generate_changes(0, len(array), 1)
+    changes = _generate_changes(0, len(array), 1)
     max_iteraciones = 100000
     for j in range(max_iteraciones):
         distances = distance_matrix(array, distance_function)

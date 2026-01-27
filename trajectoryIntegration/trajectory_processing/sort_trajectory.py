@@ -12,31 +12,70 @@ from ..utils import haversine_np, haversine_np_track
 
 from .sorting_algorithms import path_length, haversine_distance
 
-# Parámetros del proceso
-overlap_fast     = 5
-window_size_fast = 20
-overlap_slow     = 75
-window_size_slow = 101
-
-# No se aplican
-# max_kchanges = 200
-max_iteraciones = 1000
-
-
 def process_trajectories(date: str) -> None:
-    pass
+    tray_ids = (paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}').glob('*.json')
+    tray_ids = [str(x).split('.')[1] for x in tray_ids]
+    trays = [Trajectory(x, date) for x in tray_ids]
 
-    # load trajectories
-    # for trajectory in trajectories:
-    #     trajectory = process_trajectory()
+    with concurrent.futures.ProcessPoolExecutor(max_workers=7) as executor:
+        result = list(tqdm(executor.map(process_trajectory, trays), 
+                           total=len(trays), ncols=125, leave=False))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=7) as executor:
+            def process(x):
+                return process_trajectory(x, 
+                                          mode=params.HOW_SORT, 
+                                          algorithm=params.SORT_ALG, 
+                                          presort=params.PRESORT_ALG, 
+                                          check_loop=params.DETECT_LOOP,
+                                          log=True)
+            result = tqdm(executor.map(process, trays), total=len(trays), ncols=125, leave=False)
+            result = list(result)
 
-def process_trajectory(trajectory: Trajectory, mode, algorithm) -> Trajectory:
+    for t in tqdm(result, ncols=125, disable=False, desc=date, leave=False):
+        fix_timestamp(t)
+        # detect_outliers(t)
+        t.vectors.drop(['distance_org', 'distance_dst'], axis=1, inplace=True)
+        t.trajectory_status = 'L3_sorted'
+        t.save()
+    result = [t.vectors for t in result]
+
+    ### No paralelizado
+    # result = []
+    # for trajectoryId in tqdm(tray_ids):
+    #     trajectory = Trajectory(trajectoryId, date)
+    #     sort_trajectory(trajectory)
+    #     result.append(trajectory.vectors)
+    #     trajectory.save()
+
+    result = pd.concat(result)
+
+    folder = NM_TRAJECTORIES_PATH
+    if len(result)>0:
+        path = folder / f'tray.{date}.parquet'
+        result.to_parquet(path, index=False,)
+
+def process_trajectory(trajectory: Trajectory, mode, algorithm, presort, 
+                       presort_algs={}, check_loop=True, log=False) -> Trajectory:
     airports = pd.read_parquet(paths.AIRPORTS_PATH)
 
-    data = trajectory.vectors.copy().reset_index(drop=True)
-    data['old_index'] = pd.DataFrame(range(len(data)), dtype='Int32[pyarrow]')
-    data = data.drop_duplicates(subset=['latitude','longitude'])
+    ### Metrics ###############################################################
+    ts_start = time.time()
+    metrics = {}
+    data = trajectory.vectors.copy()
 
+    metrics['initial_num_vectors'] = len(data)
+    metrics['initial_distance'] = float(path_length(data[['latitude','longitude']].to_numpy(dtype='float32')))
+    metrics['dupl_vectors'] = int(data.drop('timestamp', axis=1).duplicated().sum())
+    metrics['dupl_position_vectors'] = int(data.duplicated(subset=['latitude','longitude']).sum())
+    metrics['dupl_position_vectors_pos_ts'] = int(data.duplicated(subset=['latitude','longitude','time_position']).sum())
+    metrics['dupl_position_vectors_gen_ts'] = int(data.duplicated(subset=['latitude','longitude','last_contact']).sum())
+
+    data = data.drop_duplicates(subset=['latitude','longitude']).reset_index(drop=True)
+    data['old_index'] = pd.DataFrame(range(len(data)), dtype='Int32[pyarrow]')
+
+    metrics['distance_duplVectors'] = float(path_length(data[['latitude','longitude']].to_numpy(dtype='float32')))
+    
+    ### Flight stages #########################################################
     # Calculate distances to airports
     origin_airport = airports[airports.icao == trajectory.aerodromeOfDeparture].iloc[0]
     origin_airport = origin_airport[['latitude','longitude']].to_numpy(dtype='float32')
@@ -45,16 +84,19 @@ def process_trajectory(trajectory: Trajectory, mode, algorithm) -> Trajectory:
     
     data['distance_org'] = haversine_distance(
         data[['latitude','longitude']].to_numpy(dtype='float32'), 
-        origin_airport.reshape((1,2))
-        )#.astype('Float32[pyarrow]')
+        origin_airport.reshape((1,2)))
     data['distance_dst'] = haversine_distance(
         data[['latitude','longitude']].to_numpy(dtype='float32'), 
-        destination_airport.reshape((1,2))
-        )#.astype('Float32[pyarrow]')
+        destination_airport.reshape((1,2)))
+    
+    distance_airports = haversine_distance(
+        origin_airport.reshape((1,2)), 
+        destination_airport.reshape((1,2)))
+    metrics['distance_airports'] = float(distance_airports[0])
 
-    ### Ground vectors in origin airport - By timestamp
+    # Ground vectors in origin airport - By timestamp
     ground_org = data[(data.distance_org<params.AIRPORT_AREA) & (data.on_ground)].copy()
-    ### Ground vectors in destination airport - By timestamp
+    # Ground vectors in destination airport - By timestamp
     ground_dst = data[(data.distance_dst<params.AIRPORT_AREA) & (data.on_ground)].copy()
     if len(ground_org)>0:
         data = data[~data.index.isin(ground_org.index)].copy()
@@ -70,13 +112,31 @@ def process_trajectory(trajectory: Trajectory, mode, algorithm) -> Trajectory:
         'latitude':destination_airport[0],
         'longitude':destination_airport[1],
         'distance_dst':0.0}
-
     data.index = data.index+1
     data = pd.concat([
         pd.DataFrame(initial_vec, index=[0]),
         data,
         pd.DataFrame(final_vec, index=[data.index.max()+1]),
     ])
+    
+    ### Holding maneuver detection
+    temp = data[(data.distance_dst.between(params.TMA_AREA_MIN, params.TMA_AREA_MAX)) & (data.altitude>0)].copy()
+    track_variation = calculate_rotation(temp.true_track)
+    metrics['rotation'] = float(track_variation)
+
+    del temp
+
+    ### Sorting ###############################################################
+    if presort == True:
+        if mode == 'complete':
+            data = sort_trajectory_complete(data, presort_algs['presort_complete'])
+        elif mode == 'segmented':
+            data = sort_trajectory_segmented(data, presort_algs)
+    metrics['distance_presort'] = float(path_length(data[['latitude','longitude']].to_numpy(dtype='float32')))
+
+    if check_loop:
+        # TODO: Método especial de reordenación si hay un loop (solo segmented?)
+        pass
 
     if mode == 'complete':
         data = sort_trajectory_complete(data, algorithm['complete'])
@@ -88,8 +148,24 @@ def process_trajectory(trajectory: Trajectory, mode, algorithm) -> Trajectory:
         data,
         ground_dst,]
     ).dropna(subset='old_index').reset_index(drop=True)
+    del ground_org, ground_dst
 
-    return data
+    data['new_index'] = range(len(data))
+    trajectory.vectors = data
+
+    metrics['final_distance'] = float(path_length(data[['latitude','longitude']].to_numpy(dtype='float32')))
+    metrics['final_num_vectors'] = len(data)
+    metrics['process_time'] = time.time() - ts_start
+
+    if log:
+        folder = paths.SORT_TRAJECTORIES_METRICS_PATH
+        if not folder.exists():
+            folder.mkdir(parents=True)
+        with open(folder / f'sortTray.{trajectory.date}.{trajectory.ifplId}.json', 'w+', encoding='utf8') as file:
+            json.dump(metrics, file, indent=2)
+
+    trajectory.sorting_metrics = metrics
+    return trajectory
 
 def sort_trajectory_complete(data: pd.DataFrame, algorithm_conf) -> pd.DataFrame:
     algorithm = algorithm_conf['algorithm']
@@ -117,17 +193,16 @@ def sort_trajectory_segmented(data: pd.DataFrame, algorithm_conf) -> pd.DataFram
 
     overlap = 5
 
-    ######################### Presort #########################
-
     ######################### Sort #########################
-    maneuver_org = pd.concat([maneuver_org, destination])
-    sort_trajectory_complete(maneuver_org, algorithm_conf['out']).iloc[:-1]
-                             
-    cruise = pd.concat([maneuver_org[-overlap:], cruise, destination])
-    cruise = sort_trajectory_complete(cruise, algorithm_conf['cruise']).iloc[:-1]
-
-    maneuver_dst = pd.concat([cruise[-overlap:], maneuver_dst])
-    maneuver_dst = sort_trajectory_complete(maneuver_dst, algorithm_conf['in'])
+    if algorithm_conf['out']:
+        maneuver_org = pd.concat([maneuver_org, destination])
+        sort_trajectory_complete(maneuver_org, algorithm_conf['out']).iloc[:-1]
+    if algorithm_conf['cruise']:
+        cruise = pd.concat([maneuver_org[-overlap:], cruise, destination])
+        cruise = sort_trajectory_complete(cruise, algorithm_conf['cruise']).iloc[:-1]
+    if algorithm_conf['in']:
+        maneuver_dst = pd.concat([cruise[-overlap:], maneuver_dst])
+        maneuver_dst = sort_trajectory_complete(maneuver_dst, algorithm_conf['in'])
 
     data = pd.concat([
         maneuver_org.iloc[:-overlap],
@@ -148,6 +223,11 @@ def calculate_max_rotation(tracks: pd.Series):
     
     return max(turn_right, turn_left)
 
+def is_resorted(x, acc_list: list, show_log: bool = False) -> bool:
+    pass
+
+def fix_timestamp(trajectory: Trajectory) -> pd.DataFrame:
+    pass
 
 
 
@@ -162,11 +242,15 @@ def calculate_max_rotation(tracks: pd.Series):
 
 
 
+# Parámetros del proceso
+overlap_fast     = 5
+window_size_fast = 20
+overlap_slow     = 75
+window_size_slow = 101
 
-
-
-
-
+# No se aplican
+# max_kchanges = 200
+max_iteraciones = 1000
 
 def calculate_distance(array: np.array, angle = False) -> np.array:
     array = array.astype('float32')

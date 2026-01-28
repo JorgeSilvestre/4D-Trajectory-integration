@@ -1,10 +1,10 @@
 from .data_cleaning import surveillance, flight_plans, weather, additional
 from .quality_metrics import individual_metrics, trajectory_metrics
 from .data_integration import integrate_nm_vectors
-from .trajectory_processing.sort_trajectory import sort_trajectories
+from .trajectory_processing.sort_trajectory import process_trajectories
 import time
 from .trajectory import Trajectory
-from .trajectory_processing.sort_trajectory import process_trajectory
+from .trajectory_processing.sort_trajectory import sort_trajectory, process_trajectory
 from . import params
 
 def run():
@@ -64,5 +64,5 @@ def run():
     if True:
         # AT02603204
         tray = Trajectory('AT02603928', '2023-07-03', 'raw')
-        res = process_trajectory(tray, 'segmented', params.SORT_ALG)
+        res = process_trajectory(tray, 'complete', params.SORT_ALG, False, {}, False, False)
         pass

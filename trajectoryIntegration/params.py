@@ -129,7 +129,7 @@ MIN_OSCILLATION = 10
 HOW_SORT = 'complete' # 'segmented'
 SORT_ALG = {
     'complete': {
-        'algorithm': opt2_progressive,
+        'algorithm': nearest_neighbours,
         'options': { 
             'n_closest' : 10,
             'window_size' : 100,

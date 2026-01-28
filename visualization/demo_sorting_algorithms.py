@@ -3,16 +3,30 @@ import sys
 sys.path.append('.')
 
 from pathlib import Path
+from copy import deepcopy
 
 import plotly.express as px
 import streamlit as st
+import pandas as pd
 
-from trajectoryIntegration import params, paths
+from importlib import reload
+
 from trajectoryIntegration.trajectory import Trajectory
 from trajectoryIntegration.trajectory_processing import (sort_trajectory,
                                                          sorting_algorithms)
+sort_trajectory = reload(sort_trajectory)
 
 st.set_page_config(layout='wide', page_title='Sorting algorithms demo')
+st.markdown("""
+<style>
+header.stAppHeader {
+    background-color: transparent;
+}
+section.stMain .block-container {
+    padding-top: 3rem;
+    z-index: 1;
+}
+</style>""", unsafe_allow_html=True)
 
 traj_ids = [
  'AT02603928',
@@ -27,20 +41,20 @@ traj_ids = [
  'AT02609777',
  'AT02603204', # -> desordenada pero a trozos
  'AT02609895']
-algorithm_list = {
+algorithm_values = {
     'Nearest neighbours': sorting_algorithms.nearest_neighbours,
     '2-Opt': sorting_algorithms.opt2,
     '2-Opt progressive': sorting_algorithms.opt2_progressive,
     '2-Opt restricted': sorting_algorithms.opt2_restricted,
 }
-algorithm_list = {v:k for k,v in algorithm_list.items()}
-modes = {
+algorithm_values = {v:k for k,v in algorithm_values.items()}
+mode_values = {
     'complete': 'Complete',
     'segmented': 'Segmented',
 }
 algorithm_conf = {
     'complete': {
-        'algorithm': sorting_algorithms.opt2_progressive,
+        'algorithm': sorting_algorithms.nearest_neighbours,
         'options': {
             'n_closest' : 10,
             'window_size' : 100,
@@ -68,11 +82,31 @@ algorithm_conf = {
     },
 }
 
+margin_dict = dict(l=0, r=0, t=10, b=10)
+height = 325
+
+def line_graph(data, dimension):
+    figure = px.line(
+        data.reset_index(), x='timestamp', y=dimension,
+        markers=True, hover_data=['index'], height=height)
+    figure = figure.update_layout(margin=margin_dict)
+    figure = figure.update_traces(marker=dict(size=5), line=dict(width=.5))
+    return figure
+
+def map_graph(data, sorted):
+    figure = px.scatter_map(
+        data.reset_index(), lon='longitude', lat='latitude',
+        height=height, map_style='open-street-map', zoom=4,
+        hover_data={'distance_org':':.2f', 'distance_dst':':.2f'} if sorted else {},
+        color=data.reset_index().index, color_continuous_scale='balance')
+    figure = figure.update_layout(coloraxis_showscale=False)
+    figure = figure.update_layout(margin=margin_dict)
+    return figure
+
 @st.cache_data
 def load_data():
     data_folder = Path(__file__).resolve().parent / 'demo_data'
-    return {tr:Trajectory(tr, '2023-07-03', 'demo', data_folder)
-            for tr in traj_ids}
+    return {tr:Trajectory(tr, '2023-07-03', 'demo', data_folder) for tr in traj_ids}
 
 trajectories = load_data()
 
@@ -90,8 +124,8 @@ with columns_content[1]:
         sorted_traj_graphs = st.columns([1,1,1,1])
 
 def config_parameters(algorithm, phase):
-    algorithm_conf['name'] = algorithm
-
+    algorithm_conf[phase]['algorithm'] = algorithm
+    
     distance_function = st.selectbox(
         label='Distance function', key=f'distance_function_{phase}',
         options=['Haversine', 'Euclidean'], index=0,
@@ -121,41 +155,41 @@ def config_parameters(algorithm, phase):
 def config_algorithm():
     mode = st.selectbox(
         label=':material/route: Mode', key='mode',
-        options=modes.keys(), index=0,
-        format_func=lambda x: modes[x],
+        options=mode_values.keys(), index=0,
+        format_func=lambda x: mode_values[x],
         help='Process the whole trajectory or each flight stage separately.',
     )
     with st.expander(label='Configure algorithm', expanded=True, icon=':material/settings:'):
         if mode == 'complete':
             algorithm = st.selectbox(
                 label='Algorithm', key='algorithm',
-                options=algorithm_list.keys(), index=0,
-                format_func=lambda x: algorithm_list[x],
+                options=algorithm_values.keys(), index=0,
+                format_func=lambda x: algorithm_values[x],
             )
             config_parameters(algorithm, 'complete')
         elif mode == 'segmented':
             st.markdown(':material/flight_takeoff: **Take-off**',
-                        help='Between takeoff and exit of the TMA.')
+                        help='Between takeoff and exit from the departure TMA.')
             algorithm_out = st.selectbox(
                 label='Algorithm', key='algorithm_out',
-                options=algorithm_list.keys(), index=1,
-                format_func=lambda x: algorithm_list[x],
+                options=algorithm_values.keys(), index=1,
+                format_func=lambda x: algorithm_values[x],
             )
             config_parameters(algorithm_out, 'out')
             st.markdown(':material/connecting_airports: **Cruise**',
                         help='Cruise phase in open airspace.')
             algorithm_cru = st.selectbox(
                 label='Algorithm', key='algorithm_cru',
-                options=algorithm_list.keys(), index=0,
-                format_func=lambda x: algorithm_list[x],
+                options=algorithm_values.keys(), index=0,
+                format_func=lambda x: algorithm_values[x],
             )
             config_parameters(algorithm_cru, 'cruise')
             st.markdown(':material/flight_land: **Landing**',
-                        help='Between entering the TMA and the landing.')
+                        help='Between entering the destination TMA and landing.')
             algorithm_in = st.selectbox(
                 label='Algorithm', key='algorithm_in',
-                options=algorithm_list.keys(), index=1,
-                format_func=lambda x: algorithm_list[x],
+                options=algorithm_values.keys(), index=1,
+                format_func=lambda x: algorithm_values[x],
             )
             config_parameters(algorithm_in, 'in')
     return mode
@@ -171,69 +205,56 @@ with columns_content[0]:
 
 traj = trajectories[traj_id]
 
+fig_map_old = map_graph(traj.vectors, False) 
+fig_latitude_old = line_graph(traj.vectors, 'latitude')
+fig_longitude_old = line_graph(traj.vectors, 'longitude')
+fig_altitude_old = line_graph(traj.vectors, 'altitude')
+
 with original_traj_graphs[0]:
-    fig_map_old = px.scatter_map(
-        traj.vectors.reset_index(), lon='longitude', lat='latitude',
-        height=450, map_style='open-street-map', zoom=4,
-        color=traj.vectors.index, color_continuous_scale='balance')
-    fig_map_old.update_layout(coloraxis_showscale=False)
     st.plotly_chart(fig_map_old, width='stretch', config={'scrollZoom': True})
 with original_traj_graphs[1]:
-    fig_latitude_old = px.line(
-        traj.vectors.reset_index(), x='index', y='latitude',
-        markers=True, hover_data=['index'], height=450)
     st.plotly_chart(fig_latitude_old, width='stretch')
 with original_traj_graphs[2]:
-    fig_longitude_old = px.line(
-        traj.vectors.reset_index(), x='index', y='longitude',
-        markers=True, hover_data=['index'], height=450)
     st.plotly_chart(fig_longitude_old, width='stretch')
 with original_traj_graphs[3]:
-    fig_altitude_old = px.line(
-        traj.vectors.reset_index(), x='index', y='altitude',
-        markers=True, hover_data=['index'], height=450)
     st.plotly_chart(fig_altitude_old, width='stretch')
 with df_container_old:
     with st.expander(label='Original data'):
         st.dataframe(traj.vectors.reset_index())
 
 if go_button:
-    with final_graphs:
+    with result_string:
         with st.spinner(text="Sorting trajectory...", show_time=True):
             sorted_traj = sort_trajectory.process_trajectory(
-                trajectory=traj,
+                trajectory=deepcopy(traj),
                 mode=mode,
                 algorithm=algorithm_conf,
                 presort=False,
+                check_loop=False,
+                log=False
             )
         old_dist = sorting_algorithms.path_length(traj.vectors[['latitude', 'longitude']].to_numpy(dtype='float32'),
-                                                  distance_function='haversine')
+                                                distance_function='haversine')
         new_dist = sorting_algorithms.path_length(sorted_traj.vectors[['latitude', 'longitude']].to_numpy(dtype='float32'),
-                                                  distance_function='haversine')
-        with result_string:
-            st.markdown(f'**Sorting results:** Original distance: {old_dist:.3f} Mi :material/arrow_circle_right: New distance: {new_dist:.3f} Mi (-{((old_dist-new_dist)/old_dist):.2%})')
+                                                distance_function='haversine')
+        with columns_content[0]:
+            with st.container(border=True):
+                st.metric(label="Initial distance", value=f'{old_dist:.2f} Mi')
+                st.metric(label="Final distance", value=f'{new_dist:.2f} Mi', delta=f'-{((old_dist-new_dist)/old_dist):.2%}', delta_color='inverse')
+            # st.markdown(f'**Sorting results:** Original distance: {old_dist:.2f} Mi :material/arrow_circle_right: New distance: {new_dist:.2f} Mi (-{((old_dist-new_dist)/old_dist):.2%})')
+    
+    fig_map_new = map_graph(sorted_traj.vectors, True) 
+    fig_latitude_new = line_graph(sorted_traj.vectors, 'latitude')
+    fig_longitude_new = line_graph(sorted_traj.vectors, 'longitude')
+    fig_altitude_new = line_graph(sorted_traj.vectors, 'altitude')
+
     with sorted_traj_graphs[0]:
-        fig_map_new = px.scatter_map(
-            sorted_traj.vectors.reset_index(), lon='longitude', lat='latitude',
-            height=450, map_style='open-street-map', zoom=4,
-            hover_data={'distance_org':':.2f', 'distance_dst':':.2f'},
-            color=sorted_traj.vectors.index, color_continuous_scale='balance')
-        fig_map_new.update_layout(coloraxis_showscale=False)
         st.plotly_chart(fig_map_new, width='stretch', config={'scrollZoom': True})
     with sorted_traj_graphs[1]:
-        fig_latitude_new = px.line(
-            sorted_traj.vectors.reset_index(), x='index', y='latitude',
-            markers=True, hover_data=['index', 'old_index'], height=450)
         st.plotly_chart(fig_latitude_new, width='stretch')
     with sorted_traj_graphs[2]:
-        fig_longitude_new = px.line(
-            sorted_traj.vectors.reset_index(), x='index', y='longitude',
-            markers=True, hover_data=['index', 'old_index'], height=450)
         st.plotly_chart(fig_longitude_new, width='stretch')
     with sorted_traj_graphs[3]:
-        fig_altitude_new = px.line(
-            sorted_traj.vectors.reset_index(), x='index', y='altitude',
-            markers=True, hover_data=['index', 'old_index'], height=450)
         st.plotly_chart(fig_altitude_new, width='stretch')
 
     with df_container_new:
@@ -241,6 +262,8 @@ if go_button:
             st.dataframe(sorted_traj.vectors.reset_index())
 
     with columns_content[0]:
+        with st.expander('Configuration'):
+            st.json(algorithm_conf)
         with st.expander('Sort results'):
             st.json(sorted_traj.sorting_metrics)
 

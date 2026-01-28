@@ -185,7 +185,7 @@ def opt2_restricted(df: pd.DataFrame, n_closest=10, distance_function='haversine
         df = df.reset_index(drop=False).rename(columns={'index':'old_index'})
     array = df[['latitude','longitude']].to_numpy(dtype='float32')
     current_dist = path_length(array, distance_function)
-    order = df.index.to_list()
+    order = list(range(len(df)))
 
     changes = _generate_changes(0, len(array), 1)
     max_iteraciones = 100000
@@ -221,7 +221,7 @@ def opt2_b(df: pd.DataFrame):
     max_iteraciones = 100000
     changes = [(v1,v2) for v1 in range(1,len(df)-1) for v2 in range(v1+2, len(df)-1)]
     array = df[['latitude','longitude']].to_numpy()
-    order = df.index.to_list()
+    order = list(range(len(array)))
     for j in range(max_iteraciones):
         improvements = 0
         for i, (v1, v2) in enumerate(changes):

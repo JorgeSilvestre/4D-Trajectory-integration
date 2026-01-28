@@ -159,7 +159,7 @@ def config_algorithm():
         format_func=lambda x: mode_values[x],
         help='Process the whole trajectory or each flight stage separately.',
     )
-    with st.expander(label='Configure algorithm', expanded=True, icon=':material/settings:'):
+    with st.expander(label='Algorithm configuration', expanded=True, icon=':material/settings:'):
         if mode == 'complete':
             algorithm = st.selectbox(
                 label='Algorithm', key='algorithm',

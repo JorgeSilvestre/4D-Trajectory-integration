@@ -9,6 +9,7 @@ from tqdm import tqdm
 from .. import params, paths
 from ..trajectory import Trajectory
 from .sorting_algorithms import path_length, haversine_distance
+from .process_outliers import fix_altitude
 
 def process_trajectories(date: str) -> None:
     tray_ids = (paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}').glob('*.json')
@@ -21,7 +22,7 @@ def process_trajectories(date: str) -> None:
         result = list(result)
 
     for t in tqdm(result, ncols=125, disable=False, desc=date, leave=False):
-        fix_timestamp(t)
+        recalculate_timestamp(t)
         # detect_outliers(t)
         t.vectors.drop(['distance_org', 'distance_dst'], axis=1, inplace=True)
         t.trajectory_status = 'L3_sorted'
@@ -63,9 +64,9 @@ def process_trajectory(trajectory: Trajectory, mode, algorithm, presort,
                                 presort_algs=presort_algs,
                                 check_loop=check_loop,
                                 log=log)
-    # trajectory = detect_resorted(trajectory)
-    trajectory = fix_timestamp(trajectory)
-    # trajectory = fix_altitude(trajectory)
+    trajectory = identify_moved_vectors(trajectory)
+    trajectory = recalculate_timestamp(trajectory)
+    trajectory = fix_altitude(trajectory)
     # trajectory = fix_outliers(trajectory)
 
     # cleanup 
@@ -246,7 +247,20 @@ def calculate_max_rotation(tracks: pd.Series):
     
     return max(turn_right, turn_left)
 
-def is_resorted(x:pd.DataFrame, acc_list: list, show_log: bool = False) -> bool:
+def identify_moved_vectors(trajectory: Trajectory):
+    data = trajectory.vectors.copy()
+    
+    # acc para usarlo como objeto mutable y evitar el uso de una variable global
+    # [found, missing]
+    acc = (set(), set())
+    # print(f'Tipo  (oFi  oIn | diff)    m|f oF-oI-acc Re Changes')    # Log
+    data['moved'] = (data[['new_index','old_index']].astype('Int32[pyarrow]')
+                                                         .apply(_is_moved, args=[acc], axis=1))
+    
+    trajectory.vectors = data
+    return trajectory
+
+def _is_moved(x:pd.DataFrame, acc_list: list, show_log: bool = False) -> bool:
     found, missing = acc_list
     removed, added = [], []
     # rem_f, rem_m = False, False
@@ -301,15 +315,9 @@ def is_resorted(x:pd.DataFrame, acc_list: list, show_log: bool = False) -> bool:
 
     return reordenado
 
-def fix_timestamp(trajectory: Trajectory) -> Trajectory:
+def recalculate_timestamp(trajectory: Trajectory) -> Trajectory:
     data = trajectory.vectors.copy()
     
-    # acc para usarlo como objeto mutable y evitar el uso de una variable global
-    # [found, missing]
-    acc = (set(), set())
-    # print(f'Tipo  (oFi  oIn | diff)    m|f oF-oI-acc Re Changes')    # Log
-    data['moved'] = (data[['new_index','old_index']].astype('Int32[pyarrow]')
-                                                         .apply(is_resorted, args=[acc], axis=1))
     try:
         data['fixed_timestamp'] = data[~data.moved]['timestamp'].copy().astype('Int64[pyarrow]')
     except AttributeError as e:
@@ -320,13 +328,11 @@ def fix_timestamp(trajectory: Trajectory) -> Trajectory:
         print(e)
         print(trajectory.date, trajectory.ifplId)
         print(data.head())
-    # print(f'Found:   {acc[0]}')
-    # print(f'Missing: {acc[1]}')
 
     # Usando la distancia recorrida para realizar la interpolación
     positions = data[['latitude','longitude']].to_numpy(dtype='float32')
     cum_sum = np.cumsum(haversine_distance(positions[:-1], positions[1:])) # [::-1]
-    cum_sum = np.concatenate([ cum_sum, [0]])
+    cum_sum = np.concatenate([cum_sum, [0]])
     data['fixed_timestamp'] = (data.set_index(cum_sum)['fixed_timestamp']
                                .interpolate(method='index', limit_direction='forward', limit_area='inside')
                                .interpolate(method='linear', limit_direction='both', limit_area='outside', order=1)

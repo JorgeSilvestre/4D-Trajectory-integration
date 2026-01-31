@@ -12,14 +12,14 @@ def haversine_distance(coords1, coords2, unit='mi'):
     diff_lat = coords2[:,0] - coords1[:,0]
     diff_lon = coords2[:,1] - coords1[:,1]
     lat1, lat2 = coords1[:,0], coords2[:,0]
-    
+
     a = np.sin(diff_lat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(diff_lon/2.0)**2
     c = 2 * np.arcsin(np.sqrt(a))
     if unit=='mi':
         dist = 3959.87433 * c
     elif unit=='km':
         dist = 6372.8 * c
-    
+
     # Altitude
     if coords1.shape[1] == 3 and coords2.shape[1] == 3:
         diff_alt = (coords2[:,2]-coords1[:,2])
@@ -34,13 +34,13 @@ def haversine_distance(coords1, coords2, unit='mi'):
 
 def distance_matrix(positions, distance_function='euclidean'):
     if distance_function == 'euclidean':
-        diffs = euclidean_distance(np.expand_dims(positions.transpose(),0), 
+        diffs = euclidean_distance(np.expand_dims(positions.transpose(),0),
                                    np.expand_dims(positions,2))
     elif distance_function == 'haversine':
-        diffs = haversine_distance(np.expand_dims(positions.transpose(),0), 
+        diffs = haversine_distance(np.expand_dims(positions.transpose(),0),
                                    np.expand_dims(positions,2))
     return diffs
-    
+
     return np.sqrt(np.sum(np.power(np.expand_dims(positions,2)-np.expand_dims(positions.transpose(),0), 2), axis=1))
 
 def path_length(positions, distance_function='haversine'):
@@ -199,7 +199,7 @@ def opt2_restricted(df: pd.DataFrame, n_closest=10, distance_function='haversine
             nclosest = np.ma.array(distances[i], mask=mask).argsort()[:n_closest]
             closest[i] = set(nclosest)
         changes_it = [(v1, v2) for (v1,v2) in changes if (v1 in closest and v2 in closest[v1]) or v1 not in closest]
-        
+
         improvements = 0
         for i, (v1, v2) in enumerate(changes_it):
             candidate = np.concatenate([array[:v1],
@@ -235,5 +235,5 @@ def opt2_b(df: pd.DataFrame):
                 order = order[:v1]+order[v2:v1-1:-1]+order[v2+1:]
         if not improvements:
             break
-    
+
     return df.iloc[order]

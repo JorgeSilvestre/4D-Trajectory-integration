@@ -1,6 +1,17 @@
 # Documentation index
 
+## Overview of the data workflow
+
+<figure align="center" >
+<img src="docs/assets/placeholder.webp" width="400px"  alt="">
+<figcaption></figcaption>
+</figure>
+
 ## Data description
+
+### 4D trajectories
+
+[4D trajectories](./4d_trajectories.md)
 
 ### Raw data
 - [OpenSky Network](./raw_data/opensky_network.md)
@@ -11,11 +22,7 @@
     - [Flight data](./raw_data/network_manager.md#flight-data)
 - [TAF](./raw_data/terminal_area_forecast.md)
 
-### 4D trajectories
-
-[4D trajectories](./4d_trajectories.md)
-
-## Data pipeline
+## Workflow implementation
 
 - [Directory organization](./pipeline/folder_structure.md)
 - [Cleaning pipeline](./pipeline/cleaning.md)

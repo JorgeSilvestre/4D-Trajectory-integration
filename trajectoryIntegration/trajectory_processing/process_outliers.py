@@ -12,34 +12,33 @@ def outliers_median_filter(data: pd.Series, window, thresh) -> pd.Series:
     result = (filled_sequence - median_values).abs() > thresh
 
     return result.fillna(False)
-    return data.where(result, median_values) # Where result, replace with median_values
 
 def outliers_zscore(data: pd.Series, window, thresh=3) -> pd.Series:
+    # TODO: Not working
     roll = data.rolling(window=window, min_periods=1, center=True)
     avg = roll.mean()
     std = roll.std(ddof=0)
-    z = data.sub(avg).div(std)   
+    z = data.sub(avg).div(std)
     m = z.between(-thresh, thresh)
 
     return m
-    return data.where(m, avg) # Where m, replace with avg
 
 def fix_altitude(trajectory: Trajectory):
     data = trajectory.vectors.copy()
     data['original_altitude'] = data.altitude.copy()
 
-    # TODO: Esta operación debería hacerse sobre segmentos individuales evitando los gaps, 
+    # TODO: Esta operación debería hacerse sobre segmentos individuales evitando los gaps,
     # para evitar valores raros en los extremos
-    
+
     incorrect_altitude = (
-        (data.altitude.isna() | 
+        (data.altitude.isna() |
         outliers_median_filter(data.altitude, params.ALTITUDE_CHECK_WINDOW_SIZE, params.DIFF_ALTITUDE_THRESHOLD)) &
         ~data.on_ground
     )
     interp_values = data.set_index('timestamp').altitude.copy()
     interp_values[incorrect_altitude.to_numpy()] = pd.NA
     interp_values = interp_values.interpolate(method='index', limit = 5, limit_area='inside').reset_index(drop=True)
-    
+
     data['altitude'] = interp_values
     data['incorrect_altitude'] = incorrect_altitude
 
@@ -75,9 +74,9 @@ def fix_altitude2(trajectory: Trajectory) -> pd.DataFrame:
                                     .rolling(params.ALTITUDE_CHECK_WINDOW_SIZE, min_periods=3, center=True, closed='both')
                                     .median()
                                 ).to_numpy()
-        data['incorrect_altitude'] = (data.incorrect_altitude | 
+        data['incorrect_altitude'] = (data.incorrect_altitude |
                                       (abs(data.filtered_altitude - data.median_value) > params.DIFF_ALTITUDE_THRESHOLD))
-        
+
         try:
             data.loc[[data.index[0], data.index[-1]], 'incorrect_altitude'] = False
         except IndexError:
@@ -93,9 +92,9 @@ def fix_altitude2(trajectory: Trajectory) -> pd.DataFrame:
         # data['altitude'] = data.filtered_altitude.combine_first(data.interpolated_altitude)
         data['altitude'] = data.interpolated_altitude
         data = data.drop(['incorrect_altitude', 'filtered_altitude', 'median_value', 'interpolated_altitude'], axis=1)
-        
+
         return data
-    
+
     latest = 0
     results = []
     # Gaps
@@ -107,7 +106,7 @@ def fix_altitude2(trajectory: Trajectory) -> pd.DataFrame:
 
         results.append(calculate_altitudes(data))
     else:
-        data = df.iloc[latest:].copy()        
+        data = df.iloc[latest:].copy()
         results.append(calculate_altitudes(data))
 
     df = pd.concat(results)

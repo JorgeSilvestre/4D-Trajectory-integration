@@ -14,7 +14,7 @@ def calculate_metrics_trajectories(date: str, trayType: str = 'raw'):
         folder = paths.NM_TRAJECTORIES_PATH
     ifplIds = pd.read_parquet(folder / f'tray.{date}.parquet', columns=['ifplId'],
                               engine='pyarrow', dtype_backend='pyarrow', ).ifplId.drop_duplicates()
-    
+
     for t_id in ifplIds.values:
         calculate_metrics_trajectory(date, t_id, trayType)
 
@@ -31,11 +31,11 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
                            engine='pyarrow', dtype_backend='pyarrow', )
     with open(folder / f'flightDate={date}' / f'tray.{trajectoryId}.json', 'r', encoding='utf8') as file:
         metadata = json.load(file)
-        
+
     results = {}
     results['ifplId'] = trajectoryId
     ## Generic
-    completitude = data[['timestamp', 'latitude', 'longitude', 'baro_altitude', 'geo_altitude', 
+    completitude = data[['timestamp', 'latitude', 'longitude', 'baro_altitude', 'geo_altitude',
                          'callsign', 'vertical_rate', 'velocity', 'altitude', 'true_track']].notnull().sum()
     results['completitude'] = {col:val/len(data) for col, val in completitude.items()}
     results['num_vectors'] = len(data)
@@ -81,7 +81,7 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
         THRESHOLD_CONTINUITY = params.THRESHOLD_CONTINUITY,
         AIRPORT_AREA=params.AIRPORT_AREA,
     )
-    
+
     if pd.isna(results['last_altitude_before_ground']):
         results['last_altitude_before_ground'] = None
 
@@ -100,12 +100,12 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
         if not paths.NM_TRAYS_METRICS_L3_PATH.exists():
             paths.NM_TRAYS_METRICS_L3_PATH.mkdir(parents=True)
         with open(paths.NM_TRAYS_METRICS_L3_PATH / f'tray.{date}.{trajectoryId}.json', 'w+', encoding='utf8') as file:
-            json.dump(results, file, indent=2, default=utils.custom_json_encoder)    
+            json.dump(results, file, indent=2, default=utils.custom_json_encoder)
 
     return results
 
 def calculate_traveled_distance(data):
-    return sum(utils.haversine_np(data.latitude.iloc[1:].values, data.longitude.iloc[1:].values, 
+    return sum(utils.haversine_np(data.latitude.iloc[1:].values, data.longitude.iloc[1:].values,
                                    data.latitude.iloc[:-1].values, data.longitude.iloc[:-1].values))
 
 def calculate_distance_to_airport(data, airport: str, where: str = 'origin'):
@@ -115,15 +115,15 @@ def calculate_distance_to_airport(data, airport: str, where: str = 'origin'):
     elif where == 'destination':
         vector = data.iloc[-1]
 
-    return utils.haversine_np(vector.latitude, vector.longitude, 
+    return utils.haversine_np(vector.latitude, vector.longitude,
                                ap_location.latitude, ap_location.longitude)[0]
 
 def calculate_distance_airports(airport_dep: str, airport_dest: str):
     origin_airport = airports[airports.icao == airport_dep].iloc[0]
     destination_airport = airports[airports.icao == airport_dest].iloc[0]
-    distance = utils.haversine_np(origin_airport.latitude, 
-                                  origin_airport.longitude, 
-                                  destination_airport.latitude, 
+    distance = utils.haversine_np(origin_airport.latitude,
+                                  origin_airport.longitude,
+                                  destination_airport.latitude,
                                   destination_airport.longitude)
     return distance
 
@@ -134,17 +134,17 @@ def calculate_std_granularity(data):
     return np.std(data.timestamp.iloc[1:].values - data.timestamp.iloc[:-1].values)
 
 def calculate_mean_granularity_distance(data):
-    return float(np.mean(utils.haversine_np(data.latitude[1:].values, data.longitude[1:].values, 
+    return float(np.mean(utils.haversine_np(data.latitude[1:].values, data.longitude[1:].values,
                                             data.latitude[:-1].values, data.longitude[:-1].values)))
 
 def calculate_std_granularity_distance(data):
-    return float(np.std(utils.haversine_np(data.latitude[1:].values, data.longitude[1:].values, 
+    return float(np.std(utils.haversine_np(data.latitude[1:].values, data.longitude[1:].values,
                                       data.latitude[:-1].values, data.longitude[:-1].values)))
 
 def identify_gaps(data):
     diffs = data.timestamp.iloc[1:].values - data.timestamp.iloc[:-1].values
     gaps = [dict(index=i, size=d) for i, d in enumerate(diffs) if d>params.THRESHOLD_GAP_TIME]
-    
+
     return gaps
 
 def calculate_continuity_time(data):
@@ -162,8 +162,8 @@ def calculate_gap_time(data):
 def calculate_distance_ratio(data):
     # TODO: Ratio de distancia cubierta en línea recta respecto a la distancia en línea recta que
     # separa los aeropuertos de origen y destino
-    
-    return 
+
+    return
 
 
 def get_outliers_position():

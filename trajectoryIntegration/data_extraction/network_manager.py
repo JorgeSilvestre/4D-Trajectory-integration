@@ -69,7 +69,7 @@ def _serialize_datetime(obj) -> str:
         return str(obj)
     raise TypeError("Type not serializable")
 
-def extract_NMFPLAN_mongo(date: str, client: pymongo.MongoClient, 
+def extract_NMFPLAN_mongo(date: str, client: pymongo.MongoClient,
                           airport_orig: list[str]=None, airport_dest: list[str]=None) -> None:
     sep_date = list(int(x) for x in date.split('-'))
     start = datetime(*sep_date,  0,  0,  0)

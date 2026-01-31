@@ -14,10 +14,10 @@ dates = [re.search(r'nm.flights.([\d-]{10}).parquet', str(x))[1] for x in dates]
 
 # @st.cache_data
 def load_data(date):
-    data_flight = pd.read_parquet(NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date.strftime(format="%Y-%m-%d")}.parquet', 
+    data_flight = pd.read_parquet(NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date.strftime(format="%Y-%m-%d")}.parquet',
                                   engine='pyarrow', dtype_backend='pyarrow')
-    
-    data_vectors = pd.read_parquet(NM_TRAJECTORIES_RAW_PATH / f'tray.{date.strftime(format="%Y-%m-%d")}.parquet', 
+
+    data_vectors = pd.read_parquet(NM_TRAJECTORIES_RAW_PATH / f'tray.{date.strftime(format="%Y-%m-%d")}.parquet',
                                   engine='pyarrow', dtype_backend='pyarrow')
     data_vectors['time_position'] = pd.to_datetime(data_vectors.time_position, unit='s')
     data_vectors['last_contact'] = pd.to_datetime(data_vectors.last_contact, unit='s')
@@ -33,7 +33,7 @@ def load_data(date):
     data_flight['estimatedTimeOfArrival'] = pd.to_datetime(data_flight.estimatedTimeOfArrival, unit='s')
     data_flight['calculatedTakeOffTime'] = pd.to_datetime(data_flight.calculatedTakeOffTime, unit='s')
     data_flight['calculatedTimeOfArrival'] = pd.to_datetime(data_flight.calculatedTimeOfArrival, unit='s')
-    
+
     return data_flight, data_vectors
 
 columns_content = st.columns([1,4])
@@ -59,8 +59,8 @@ with columns_content[0]:
 with columns_content[0]:
     flight_infobox = st.expander(label='**🔎 Información del vuelo**')
     with flight_infobox:
-        st.dataframe(data_flight[data_flight.ifplId == flight_id].transpose().astype(str), 
-                     use_container_width=True, height=420, 
+        st.dataframe(data_flight[data_flight.ifplId == flight_id].transpose().astype(str),
+                     use_container_width=True, height=420,
                      column_config = {'_index' : st.column_config.Column(width="small",)},
     )
     metrics_infobox = st.expander(label='**📈 Métricas de reordenación**')
@@ -83,20 +83,20 @@ with columns_content[1]:
         raw_map = px.scatter_mapbox(
             tray_data, lat='latitude', lon='longitude',
             mapbox_style='carto-positron', zoom=3.5,
-            height=450,  
-            hover_data={'timestamp':True, 
+            height=450,
+            hover_data={'timestamp':True,
                         'altitude':':.2f',
-                        'on_ground':True}, 
+                        'on_ground':True},
         )
-        raw_map.update_layout(margin=dict(l=0, r=0, b=0, t=0)) 
+        raw_map.update_layout(margin=dict(l=0, r=0, b=0, t=0))
         st.plotly_chart(raw_map, use_container_width=True)
-    
+
     with columns_graphs[1]:
         fig = px.scatter_3d(tray_data, x='latitude', y='longitude', z='altitude', height=450,)
-        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0)) 
+        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
         fig.update_traces( marker=dict(size=4))
         st.plotly_chart(fig, use_container_width=True)
-    
+
     st.write('**Vectores**')
     st.dataframe(tray_data, height=420, )
 

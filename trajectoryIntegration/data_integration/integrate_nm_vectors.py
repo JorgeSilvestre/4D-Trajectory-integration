@@ -4,6 +4,19 @@ import datetime
 
 from .. import params, paths, utils
 
+flight_attribute_names = [
+    'ifplId', 'icao24', 'callsign',
+    'estimatedOffBlockTime', 'aerodromeOfDeparture',
+    'aerodromeOfDestination', 'operator', 'operatingOperator',
+    'flightState',
+    'estimatedTakeOffTime', 'estimatedTimeOfArrival', 'actualTakeOffTime',
+    'actualTimeOfArrival',
+    'calculatedTakeOffTime',
+    'calculatedTimeOfArrival',
+    'flightType', 'registrationMark', 'ssr',
+    'totalEstimatedElapsedTime', 'wakeTurbulenceCategory',
+    'aircraftType', 'routeLength', ]
+
 def nm_merge_fp_fd(date: str) -> None:
     """Merge NM flight plan and flight data from a given date
 
@@ -55,8 +68,8 @@ def nm_merge_fp_fd(date: str) -> None:
     flights = flights.drop(['aircraftType_x', 'aircraftType_y'], axis = 1)
 
     # Ensure that joined FP-FD pairs refer to the same flight (due to ifplId reutilization)
-    flights = flights[(flights.actualTakeOffTime > flights.estimatedOffBlockTime - 24*3600) &
-                      (flights.actualTimeOfArrival < flights.estimatedOffBlockTime + 2*24*3600)]
+    flights = flights[(flights.actualTakeOffTime > flights.estimatedOffBlockTime - pd.Timedelta(days=1)) &
+                      (flights.actualTimeOfArrival < flights.estimatedOffBlockTime + pd.Timedelta(days=2))]
 
     flights = flights.drop_duplicates()
 
@@ -64,7 +77,7 @@ def nm_merge_fp_fd(date: str) -> None:
     flights = flights.drop(['timestamp', 'flightDataVersionNr'], axis=1)
 
     # Sort columns
-    flights = flights[params.flight_attribute_names]
+    flights = flights[flight_attribute_names]
 
     output_folder = paths.NM_PARQUET_FLIGHTS_PATH
     if not output_folder.exists():
@@ -130,8 +143,8 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
         if len(vectors_icao) == 0:
             continue
         joined = pd.merge(vectors_icao.drop('callsign',axis=1), flights, on='icao24', how='inner')
-        joined = joined[(joined.timestamp >= joined.actualTakeOffTime - params.TIME_SLACK) &
-                        (joined.timestamp <= joined.actualTimeOfArrival + params.TIME_SLACK)]
+        joined = joined[(joined.timestamp >= joined.actualTakeOffTime - pd.Timedelta(seconds=params.TIME_EXPANSION)) &
+                        (joined.timestamp <= joined.actualTimeOfArrival + pd.Timedelta(seconds=params.TIME_EXPANSION))]
         joined = joined.loc[:, vectors_icao.columns.to_list()+['ifplId']].drop_duplicates()
         joined_icao24 = joined.ifplId.drop_duplicates()
         if len(joined)>0:
@@ -168,7 +181,7 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
 
         # Remove trajectories with too few vectors
         too_few_vectors = joined_vectors.groupby('ifplId').count()
-        too_few_vectors = too_few_vectors[too_few_vectors.icao24>=params.VECTOR_NUMBER_MIN]
+        too_few_vectors = too_few_vectors[too_few_vectors.icao24>=params.MIN_VECTOR_NUMBER]
         joined_vectors = joined_vectors[joined_vectors.ifplId.isin(too_few_vectors.index)]
         integration_metrics['num_joined_vectors_final'] = len(joined_vectors)
         integration_metrics['num_joined_flights_final'] = len(too_few_vectors)
@@ -196,10 +209,10 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
                 aerodromeOfDeparture=flight.aerodromeOfDeparture.values[0],
                 aerodromeOfDestination=flight.aerodromeOfDestination.values[0],
                 airline=flight.operator.values[0] if pd.notna(flight.operator.values[0]) else flight.operatingOperator.values[0],
-                estimatedTakeOffTime=int(flight.estimatedTakeOffTime.values[0]),
-                estimatedTimeOfArrival=int(flight.estimatedTimeOfArrival.values[0]),
-                actualTakeOffTime=int(flight.actualTakeOffTime.values[0]),
-                actualTimeOfArrival=int(flight.actualTimeOfArrival.values[0]),
+                estimatedTakeOffTime=(flight.estimatedTakeOffTime.values[0]),
+                estimatedTimeOfArrival=(flight.estimatedTimeOfArrival.values[0]),
+                actualTakeOffTime=(flight.actualTakeOffTime.values[0]),
+                actualTimeOfArrival=(flight.actualTimeOfArrival.values[0]),
                 num_vectores=len(gdata),
                 ts_start=gdata.timestamp.min(),
                 ts_end=gdata.timestamp.max(),

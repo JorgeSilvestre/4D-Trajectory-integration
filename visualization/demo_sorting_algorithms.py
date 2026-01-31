@@ -125,7 +125,7 @@ with columns_content[1]:
 
 def config_parameters(algorithm, phase):
     algorithm_conf[phase]['algorithm'] = algorithm
-    
+
     distance_function = st.selectbox(
         label='Distance function', key=f'distance_function_{phase}',
         options=['Haversine', 'Euclidean'], index=0,
@@ -135,7 +135,7 @@ def config_parameters(algorithm, phase):
 
     if algorithm == sorting_algorithms.opt2_progressive:
         window_size = st.slider(
-            'window_size', 0, 200, 50, 5, key=f'window_size_{phase}',
+            'window_size', 5, 200, 50, 5, key=f'window_size_{phase}',
             help='Number of positions to sort in each iteration.'
         )
         algorithm_conf[phase]['options']['window_size'] = window_size
@@ -146,7 +146,7 @@ def config_parameters(algorithm, phase):
         algorithm_conf[phase]['options']['overlap'] = overlap
     elif algorithm == sorting_algorithms.opt2_restricted:
         n_closest = st.slider(
-            'n_closest', 0, 100, 5, key=f'n_closest_{phase}',
+            'n_closest', 1, 100, 5, key=f'n_closest_{phase}',
             help='Maximum number of candidates to replace each position.'
         )
         algorithm_conf[phase]['options']['n_closest'] = n_closest
@@ -205,7 +205,7 @@ with columns_content[0]:
 
 traj = trajectories[traj_id]
 
-fig_map_old = map_graph(traj.vectors, False) 
+fig_map_old = map_graph(traj.vectors, False)
 fig_latitude_old = line_graph(traj.vectors, 'latitude')
 fig_longitude_old = line_graph(traj.vectors, 'longitude')
 fig_altitude_old = line_graph(traj.vectors, 'altitude')
@@ -242,8 +242,8 @@ if go_button:
                 st.metric(label="Initial distance", value=f'{old_dist:.2f} Mi')
                 st.metric(label="Final distance", value=f'{new_dist:.2f} Mi', delta=f'-{((old_dist-new_dist)/old_dist):.2%}', delta_color='inverse')
             # st.markdown(f'**Sorting results:** Original distance: {old_dist:.2f} Mi :material/arrow_circle_right: New distance: {new_dist:.2f} Mi (-{((old_dist-new_dist)/old_dist):.2%})')
-    
-    fig_map_new = map_graph(sorted_traj.vectors, True) 
+
+    fig_map_new = map_graph(sorted_traj.vectors, True)
     fig_latitude_new = line_graph(sorted_traj.vectors, 'latitude')
     fig_longitude_new = line_graph(sorted_traj.vectors, 'longitude')
     fig_altitude_new = line_graph(sorted_traj.vectors, 'altitude')

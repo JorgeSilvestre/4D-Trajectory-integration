@@ -24,7 +24,7 @@ def _extract_temps(temp_records):
                     res[0] = rec['max_temp_c']
                     res[1] = rec['valid_time']
             return res
-        
+
 def _extract_sky_conditions(sky_record):
         if len(sky_record)==0:
             return [pd.NA]*3
@@ -34,7 +34,7 @@ def _extract_sky_conditions(sky_record):
                 sky_record[0]['cloud_base_ft_agl'],
                 sky_record[0]['cloud_type'] if sky_record[0]['cloud_type'] else pd.NA
             ]
-        
+
 def taf_change_schema(data: pd.DataFrame)  -> pd.DataFrame:
     # Drop unused columns
     data = data.drop(['form', 'raw_text'], axis=1)
@@ -102,3 +102,42 @@ def taf_clean_parquet(month: str) -> None:
     output_file = output_folder / f'taf.{month}.parquet'
     data.to_parquet(output_file, index=False)
 
+def taf_current_report(month: str):
+    weather_data = ['wind_dir_degrees', 'wind_speed_kt', 'wing_gust_kt', 'wind_shear_hgt_ft_agl',
+                'wind_shear_dir_degrees', 'wind_shear_speed_kt', 'visibility_statute_mi',
+                'altim_in_hg', 'vert_vis_ft', 'wx_string', 'sky_condition',
+                'turbulence_condition', 'icing_condition', 'temperature',
+                'sky_cover','cloud_base_ft_agl','cloud_type','max_temp','min_temp',
+                'max_temp_timestamp','min_temp_timestamp']
+
+    folder = paths.TAF_PARQUET_PATH / f'taf.{month}.parquet'
+    data = pd.read_parquet(folder, engine='pyarrow', dtype_backend='pyarrow',
+                        #    filters=[('station_id', '=', 'LEMD')]
+                           )
+
+    # La situación "base" se define con los informes que dan una descripción detallada: base, AMD o COR
+    bases = data[data.change_indicator.isna() | data.change_indicator.isin(['AMD', 'COR'])].sort_values('issue_time')
+
+    # Sobreescritura de COR
+    bases = bases.groupby(['station_id', 'valid_time_to']).agg({x:'last' for x in weather_data})
+
+    # BECMG describe un cambio permanente en alguno de los factores del informe. Sobreescribe, con los campos informados,
+    # los homólogos en la situación base a partir de su comienzo de validez
+    stable = pd.concat([bases, data[data.change_indicator=='BECMG']]).sort_values(
+        ['issue_time','valid_time_from','time_from', 'time_to'],
+        na_position='first')
+
+    stable = stable.groupby(['station_id', 'issue_time']).agg({x:'last' for x in weather_data})
+
+    # TEMPO describe un cambio temporal en alguno de los factores del informe.Sobreescribe, con los campos informados,
+    # los homólogos en la situación base a partir de su comienzo de validez y hasta su final de validez
+    tempo = pd.concat([stable, data[data.change_indicator=='TEMPO']]).sort_values(
+        ['issue_time','valid_time_from','time_from', 'time_to'],
+        na_position='first')
+
+    tempo = tempo.groupby(['station_id', 'issue_time']).agg({x:'last' for x in weather_data})
+
+    data = tempo.drop_duplicates()
+
+
+    return bases

@@ -59,7 +59,7 @@ class Trajectory():
 
     def __init__(self, trajectoryId, date, state='raw', demo_folder=None):
         if state == 'raw':
-            folder = NM_TRAJECTORIES_RAW_PATH 
+            folder = NM_TRAJECTORIES_RAW_PATH
         elif state == 'clean':
             folder = NM_TRAJECTORIES_PATH
         elif state == 'demo':
@@ -73,9 +73,9 @@ class Trajectory():
         for k, v in metadata.items():
             setattr(self, k, v)
         self.state = state
-        
+
         self.save_single_tray = False
-        
+
         # self.ifplId = metadata['ifplId']
         # self.callsign = metadata['callsign']
         # self.icao24 = metadata['icao24']
@@ -91,7 +91,7 @@ class Trajectory():
         # self.ts_start = metadata['ts_start']
         # self.ts_end = metadata['ts_end']
         # self.trajectory_status = metadata['trajectory_status']
-    
+
     # def delayArrival(self) -> int:
     #     return self.actualDeparture - self.plannedDeparture
     # def delayDeparture(self) -> int:
@@ -108,7 +108,7 @@ class Trajectory():
     # def traveled_distance(self, status:Literal['raw','current']) -> float:
     #     """
     #     Args:
-    #         status: Whether to calculate current (improved) traveled distance 
+    #         status: Whether to calculate current (improved) traveled distance
     #             vs. raw traveled distance
     #     """
     #     data = self.vectors if status == 'current' else self.raw_vectors
@@ -118,7 +118,7 @@ class Trajectory():
     def update():
         '''Update values of attributes based on current vectors.'''
         # TODO
-        
+
     def save(self):
         folder = NM_TRAJECTORIES_RAW_PATH / f'flightDate={self.date}'
         with open(folder / f'tray.{self.ifplId}.json', 'r', encoding='utf8') as file:
@@ -126,7 +126,7 @@ class Trajectory():
         metadata = {}
         for k in old_metadata.keys():
             metadata[k] = getattr(self, k)
-        
+
         folder = NM_TRAJECTORIES_PATH / f'flightDate={self.date}'
         if not folder.exists(): folder.mkdir(parents=True)
         with open(folder / f'tray.{self.ifplId}.json', 'w+', encoding='utf8') as file:

@@ -16,7 +16,7 @@ st.set_page_config(layout="wide", page_title='Dashboard L2 Metrics')
 
 def load_data(date_start: datetime.date, date_end: datetime.date):
     dates = get_dates_between(
-        date_start.strftime('%Y-%m-%d'), 
+        date_start.strftime('%Y-%m-%d'),
         date_end.strftime('%Y-%m-%d'))
     data_metrics = []
     for date in dates:
@@ -40,7 +40,7 @@ def load_data(date_start: datetime.date, date_end: datetime.date):
     for date in dates:
         date = date.strftime('%Y-%m-%d')
         flights = pd.read_parquet(
-            NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet', 
+            NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet',
             engine='pyarrow', dtype_backend='pyarrow')
         data_flights.append(flights)
     data_flights = pd.concat(data_flights)
@@ -77,7 +77,7 @@ if data_metrics is not None:
             st.write(':material/arrow_forward:')
         with filter_cols[2]:
             destination = st.selectbox(':material/flight_land: Destination', options=['All']+sorted(data_metrics.aerodromeOfDestination.unique().tolist()))
-    
+
     if origin != 'All':
         data_metrics = data_metrics[data_metrics.aerodromeOfDeparture==origin]
     if destination != 'All':
@@ -89,7 +89,7 @@ if data_metrics is not None:
             x='num_vectors',
             nbins=data_metrics.num_vectors.max()//50+1,
             title='Number of vectors per flight')
-        
+
         g_duration = px.histogram(
             data_frame=data_metrics,
             x='duration',
@@ -101,7 +101,7 @@ if data_metrics is not None:
             x='distance',
             nbins=int(data_metrics.distance.max()//1000+1),
             title='Distance (in Km) per flight')
-        
+
         st.write('### Length of the trajectory')
         columns_content_1 = st.columns([1,1,1])
         columns_content_1[0].plotly_chart(g_num_vectors, use_container_width=True)
@@ -117,7 +117,7 @@ if data_metrics is not None:
 
         g_distance_to_destination = px.histogram(
             data_frame=data_metrics,
-            x='distance_to_destination', 
+            x='distance_to_destination',
             nbins=int(data_metrics.distance_to_destination.max()//50+1),
             title='Frequency of distances to destination airport (in Km)')
 
@@ -125,7 +125,7 @@ if data_metrics is not None:
             data_frame=data_metrics, barmode='group',
             x=['missing_start', 'missing_end'],
             title='Number of flights with missing start or end')
-        
+
         st.write('### Completitude identification')
         columns_content_2 = st.columns([1,1,1])
         columns_content_2[0].plotly_chart(g_distance_to_origin, use_container_width=True)
@@ -164,7 +164,7 @@ if data_metrics is not None:
             nbins=50,
             barmode='overlay',
             title='Continuity ratio for each flight')
-        
+
         st.write('### Continuity')
         columns_content_4 = st.columns([1,1,1])
         columns_content_4[0].plotly_chart(g_num_segments, use_container_width=True)

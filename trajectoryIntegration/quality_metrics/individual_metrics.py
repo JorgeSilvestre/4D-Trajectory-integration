@@ -4,9 +4,9 @@ import pandas as pd
 from tqdm import tqdm
 
 from .. import paths, utils
-from ..data_cleaning.flight_plans import (nm_fdata_change_schema,
-                                          nm_fplan_change_schema)
-from ..data_cleaning.surveillance import op_vectors_change_schema
+from ..data_cleaning.flight_plans import (nm_fdata_normalize_schema,
+                                          nm_fplan_normalize_schema)
+from ..data_cleaning.surveillance import opensky_vectors_normalize_schema
 from ..data_cleaning.weather import taf_change_schema
 
 def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
@@ -16,7 +16,7 @@ def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
     elif state == 'clean':
         data_path = paths.OPENSKY_PARQUET_VECTORS_PATH
         output_path = paths.OPENSKY_VECTORS_METRICS_L1_PATH / f'vectors.L1.{date}.json'
-    
+
     file_list = list((data_path / f'flightDate={date}').glob('*.parquet'))
     if not file_list:
         return None
@@ -25,7 +25,7 @@ def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
     for path in tqdm(file_list, desc=f'{date} VECTORS | Metrics', ncols=125):
         data = pd.read_parquet(path, engine='pyarrow', dtype_backend='pyarrow')
         if state == 'raw':
-            data = op_vectors_change_schema(data)
+            data = opensky_vectors_normalize_schema(data)
         completitude_fields = data.columns
 
         partial_results = {}
@@ -54,13 +54,13 @@ def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
     results['nulls'] = {}
     for attr in ['latitude','longitude','latlon']:
         results['nulls'][attr] = sum([x['nulls'][attr] for x in res])
-    
+
     if state == 'raw':
-        data = pd.read_parquet(file_list, columns=['hexid', 'callsign'], 
+        data = pd.read_parquet(file_list, columns=['hexid', 'callsign'],
                                engine='pyarrow', dtype_backend='pyarrow')
         data = data.rename(columns={'hexid':'icao24',})
     elif state == 'clean':
-        data = pd.read_parquet(file_list, columns=['icao24', 'callsign'], 
+        data = pd.read_parquet(file_list, columns=['icao24', 'callsign'],
                                engine='pyarrow', dtype_backend='pyarrow')
     uniqueness = data[['icao24','callsign']].nunique()
     results['uniqueness'] = {col:val for col, val in uniqueness.items()}
@@ -78,7 +78,7 @@ def calculate_metrics_fplan(date: str, state: str = 'clean') -> None:
         filepath = paths.NM_FPLAN_METRICS_L0_PATH / f'fPlan.L0.{date}.json'
         with open(paths.NM_JSON_FPLAN_PATH / f'flightDate={date}' / f'flightDate={date}.json', 'r', encoding='utf8') as file:
             data = [json.loads(x) for x in file]
-        data = nm_fplan_change_schema(data)
+        data = nm_fplan_normalize_schema(data)
 
     results = {}
     results['date'] = date
@@ -109,7 +109,7 @@ def calculate_metrics_fplan(date: str, state: str = 'clean') -> None:
     results['flights_airport_route'] = {'-'.join(col):val for col,val
         in data.drop_duplicates(subset=['ifplId']).groupby(['aerodromeOfDeparture', 'aerodromeOfDestination']).count().ifplId.items()}
 
-    
+
     if not filepath.parent.exists():
         filepath.parent.mkdir(parents=True)
     with open(filepath, 'w+', encoding='utf8') as file:
@@ -126,7 +126,7 @@ def calculate_metrics_fdata(date: str, state: str = 'clean') -> None:
         for file_path in file_list:
             with open(file_path, 'r', encoding='utf8') as file:
                 chunk = [json.loads(x) for x in file]
-            chunk = nm_fdata_change_schema(chunk)
+            chunk = nm_fdata_normalize_schema(chunk)
             data.append(chunk)
         data = pd.concat(data)
 
@@ -159,7 +159,7 @@ def calculate_metrics_fdata(date: str, state: str = 'clean') -> None:
     }
 
     results['avg_messages_per_flight'] = data.groupby('ifplId').count().estimatedOffBlockTime.mean()
-    
+
     if state == 'clean':
         filepath = paths.NM_FDATA_METRICS_L1_PATH / f'fData.L1.{date}.json'
     elif state == 'raw':
@@ -200,7 +200,7 @@ def calculate_metrics_taf(month: str, state: str = 'clean') -> None:
     }
     results['reports_per_type'] = {col:val for col,val
         in data.groupby('change_indicator').count().station_id.items()}
-    
+
     if not filepath.parent.exists():
         filepath.parent.mkdir(parents=True)
     with open(filepath, 'w+', encoding='utf8') as file:

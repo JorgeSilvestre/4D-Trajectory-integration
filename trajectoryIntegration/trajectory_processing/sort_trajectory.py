@@ -14,19 +14,20 @@ from .process_outliers import fix_altitude
 def process_trajectories(date: str) -> None:
     tray_ids = (paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}').glob('*.json')
     tray_ids = [str(x).split('.')[1] for x in tray_ids]
-    trays = [Trajectory(x, date) for x in tray_ids]
+    trays = (Trajectory(x, date) for x in tray_ids)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=7) as executor:
-        result = tqdm(executor.map(_process_trajectory_params, trays), 
-                        total=len(trays), ncols=125, leave=False)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=7) as executor:
+        # chunksize = 10
+        result = tqdm(executor.map(_process_trajectory_params, trays, chunksize=1, buffersize=15),
+                      total=len(tray_ids), ncols=125, leave=True)
         result = list(result)
 
-    for t in tqdm(result, ncols=125, disable=False, desc=date, leave=False):
-        recalculate_timestamp(t)
-        # detect_outliers(t)
-        t.vectors.drop(['distance_org', 'distance_dst'], axis=1, inplace=True)
-        t.trajectory_status = 'L3_sorted'
-        t.save()
+    # for t in tqdm(result, ncols=125, disable=False, desc=date, leave=False):
+    #     recalculate_timestamp(t)
+    #     # detect_outliers(t)
+    #     t.vectors.drop(['distance_org', 'distance_dst'], axis=1, inplace=True)
+    #     t.trajectory_status = 'L3_sorted'
+    #     t.save()
     result = [t.vectors for t in result]
 
     ### No paralelizado
@@ -39,28 +40,28 @@ def process_trajectories(date: str) -> None:
 
     result = pd.concat(result)
 
-    folder = NM_TRAJECTORIES_PATH
+    folder = paths.NM_TRAJECTORIES_PATH
     if len(result)>0:
         path = folder / f'tray.{date}.parquet'
         result.to_parquet(path, index=False,)
 
 def _process_trajectory_params(trajectory: Trajectory):
     trajectory = process_trajectory(
-        trajectory, 
-        mode=params.HOW_SORT, 
-        algorithm=params.SORT_ALG, 
-        presort=params.PRESORT_ALG, 
+        trajectory,
+        mode=params.HOW_SORT,
+        algorithm=params.SORT_ALG,
+        presort=params.PRESORT_ALG,
         check_loop=params.DETECT_LOOP,
         log=True)
 
     return trajectory
 
-def process_trajectory(trajectory: Trajectory, mode, algorithm, presort, 
+def process_trajectory(trajectory: Trajectory, mode, algorithm, presort,
                        presort_algs={}, check_loop=True, log=False):
-    trajectory = sort_trajectory(trajectory=trajectory, 
-                                mode=mode, 
-                                algorithm=algorithm, 
-                                presort=presort, 
+    trajectory = sort_trajectory(trajectory=trajectory,
+                                mode=mode,
+                                algorithm=algorithm,
+                                presort=presort,
                                 presort_algs=presort_algs,
                                 check_loop=check_loop,
                                 log=log)
@@ -69,13 +70,14 @@ def process_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     trajectory = fix_altitude(trajectory)
     # trajectory = fix_outliers(trajectory)
 
-    # cleanup 
-    # t.vectors.drop(['distance_org', 'distance_dst'], axis=1, inplace=True)
-    # t.trajectory_status = 'L3_sorted'
+    # cleanup
+    # trajectory.vectors.drop(['distance_org', 'distance_dst'], axis=1, inplace=True)
+    trajectory.trajectory_status = 'L3_sorted'
+    trajectory.save()
 
     return trajectory
 
-def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort, 
+def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
                        presort_algs={}, check_loop=True, log=False) -> Trajectory:
     airports = pd.read_parquet(paths.AIRPORTS_PATH)
 
@@ -95,23 +97,23 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     data['old_index'] = pd.DataFrame(range(len(data)), dtype='Int32[pyarrow]')
 
     metrics['distance_duplVectors'] = float(path_length(data[['latitude','longitude']].to_numpy(dtype='float32')))
-    
+
     ### Flight stages #########################################################
     # Calculate distances to airports
-    origin_airport = airports[airports.icao == trajectory.aerodromeOfDeparture].iloc[0]
+    origin_airport = airports[airports.icao_code == trajectory.aerodromeOfDeparture].iloc[0]
     origin_airport = origin_airport[['latitude','longitude']].to_numpy(dtype='float32')
-    destination_airport = airports[airports.icao == trajectory.aerodromeOfDestination].iloc[0]
+    destination_airport = airports[airports.icao_code == trajectory.aerodromeOfDestination].iloc[0]
     destination_airport = destination_airport[['latitude','longitude']].to_numpy(dtype='float32')
-    
+
     data['distance_org'] = haversine_distance(
-        data[['latitude','longitude']].to_numpy(dtype='float32'), 
+        data[['latitude','longitude']].to_numpy(dtype='float32'),
         origin_airport.reshape((1,2)))
     data['distance_dst'] = haversine_distance(
-        data[['latitude','longitude']].to_numpy(dtype='float32'), 
+        data[['latitude','longitude']].to_numpy(dtype='float32'),
         destination_airport.reshape((1,2)))
-    
+
     distance_airports = haversine_distance(
-        origin_airport.reshape((1,2)), 
+        origin_airport.reshape((1,2)),
         destination_airport.reshape((1,2)))
     metrics['distance_airports'] = float(distance_airports[0])
 
@@ -139,7 +141,7 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
         data,
         pd.DataFrame(final_vec, index=[data.index.max()+1]),
     ])
-    
+
     ### Sorting ###############################################################
     if presort == True:
         if mode == 'complete':
@@ -164,7 +166,7 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
         data = sort_trajectory_complete(data, algorithm['complete'])
     elif mode == 'segmented':
         data = sort_trajectory_segmented(data, algorithm)
-    
+
     data = pd.concat(
         [ground_org,
         data,
@@ -194,13 +196,13 @@ def sort_trajectory_complete(data: pd.DataFrame, algorithm_conf) -> pd.DataFrame
     config = algorithm_conf['options']
     sorted_tray =  algorithm(data, **config)
     old_distance = path_length(
-        data[['latitude', 'longitude']].to_numpy(dtype='float32')[1:-1,:], 
+        data[['latitude', 'longitude']].to_numpy(dtype='float32')[1:-1,:],
         distance_function='haversine')
     new_distance = path_length(
-        sorted_tray[['latitude', 'longitude']].to_numpy(dtype='float32')[1:-1,:], 
+        sorted_tray[['latitude', 'longitude']].to_numpy(dtype='float32')[1:-1,:],
         distance_function='haversine')
-    print(old_distance, 'Mi ->', new_distance, f'Mi (-{((old_distance-new_distance)/old_distance):.2%})')
-    
+    # print(old_distance, 'Mi ->', new_distance, f'Mi (-{((old_distance-new_distance)/old_distance):.2%})')
+
     return sorted_tray if new_distance < old_distance else data
 
 def sort_trajectory_segmented(data: pd.DataFrame, algorithm_conf) -> pd.DataFrame:
@@ -242,21 +244,21 @@ def calculate_max_rotation(tracks: pd.Series):
     deltas = tracks.diff().dropna()
     deltas = (deltas + 180) % 360 - 180
 
-    turn_right = (deltas[deltas>0].sum()) 
-    turn_left = -(deltas[deltas<0].sum()) 
-    
+    turn_right = (deltas[deltas>0].sum())
+    turn_left = -(deltas[deltas<0].sum())
+
     return max(turn_right, turn_left)
 
 def identify_moved_vectors(trajectory: Trajectory):
     data = trajectory.vectors.copy()
-    
+
     # acc para usarlo como objeto mutable y evitar el uso de una variable global
     # [found, missing]
     acc = (set(), set())
     # print(f'Tipo  (oFi  oIn | diff)    m|f oF-oI-acc Re Changes')    # Log
-    data['moved'] = (data[['new_index','old_index']].astype('Int32[pyarrow]')
+    data['is_moved'] = (data[['new_index','old_index']].astype('Int32[pyarrow]')
                                                          .apply(_is_moved, args=[acc], axis=1))
-    
+
     trajectory.vectors = data
     return trajectory
 
@@ -317,31 +319,19 @@ def _is_moved(x:pd.DataFrame, acc_list: list, show_log: bool = False) -> bool:
 
 def recalculate_timestamp(trajectory: Trajectory) -> Trajectory:
     data = trajectory.vectors.copy()
-    
-    try:
-        data['fixed_timestamp'] = data[~data.moved]['timestamp'].copy().astype('Int64[pyarrow]')
-    except AttributeError as e:
-        print(e)
-        print(trajectory.date, trajectory.ifplId)
-        print(data.head())
-    except KeyError as e:
-        print(e)
-        print(trajectory.date, trajectory.ifplId)
-        print(data.head())
-
-    # Usando la distancia recorrida para realizar la interpolación
-    positions = data[['latitude','longitude']].to_numpy(dtype='float32')
-    cum_sum = np.cumsum(haversine_distance(positions[:-1], positions[1:])) # [::-1]
-    cum_sum = np.concatenate([cum_sum, [0]])
-    data['fixed_timestamp'] = (data.set_index(cum_sum)['fixed_timestamp']
-                               .interpolate(method='index', limit_direction='forward', limit_area='inside')
-                               .interpolate(method='linear', limit_direction='both', limit_area='outside', order=1)
-                               .round(0).astype('int64[pyarrow]').to_numpy())
     data['original_timestamp'] = data['timestamp'].copy()
-    data['timestamp'] = data['fixed_timestamp'].to_numpy()
+
+    positions = data[['latitude','longitude']].to_numpy(dtype='float32')
+    cum_sum = np.cumsum(haversine_distance(positions[:-1], positions[1:]))
+    cum_sum = np.concatenate([cum_sum, [0]])
+    interp_values = data.timestamp.copy()
+    interp_values[data.is_moved.to_numpy()] = pd.NA
+    interp_values.index = cum_sum
+    interp_values = interp_values.interpolate(method='index', limit_direction='forward', limit_area='inside')
+    interp_values = interp_values.interpolate(method='linear', limit_direction='both', limit_area='outside', order=1)
+    interp_values = interp_values.round(0).astype('int64[pyarrow]').to_numpy()
+    data['timestamp'] = interp_values
 
     trajectory.vectors = data
 
     return trajectory
-
-

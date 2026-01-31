@@ -21,11 +21,11 @@ dates = [re.search(r'nm.flights.([\d-]{10}).parquet', str(x))[1] for x in dates]
 
 # @st.cache_data
 def load_data(date):
-    data_fp = pd.read_parquet(NM_PARQUET_FPLAN_PATH / f'nm.fplan.{date.strftime(format="%Y-%m-%d")}.parquet', 
+    data_fp = pd.read_parquet(NM_PARQUET_FPLAN_PATH / f'nm.fplan.{date.strftime(format="%Y-%m-%d")}.parquet',
                               engine='pyarrow', dtype_backend='pyarrow')
-    data_fd = pd.read_parquet(NM_PARQUET_FDATA_PATH / f'nm.fdata.{date.strftime(format="%Y-%m-%d")}.parquet', 
+    data_fd = pd.read_parquet(NM_PARQUET_FDATA_PATH / f'nm.fdata.{date.strftime(format="%Y-%m-%d")}.parquet',
                               engine='pyarrow', dtype_backend='pyarrow').sort_values('flightDataVersionNr')
-    data_flight = pd.read_parquet(NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date.strftime(format="%Y-%m-%d")}.parquet', 
+    data_flight = pd.read_parquet(NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date.strftime(format="%Y-%m-%d")}.parquet',
                                   engine='pyarrow', dtype_backend='pyarrow')
 
     data_fp['timestamp'] = pd.to_datetime(data_fp.timestamp, unit='s')
@@ -73,9 +73,9 @@ with columns_content[0]:
 with columns_content[0]:
     flight_infobox = st.expander(label='**🔎 Información del vuelo**')
     with flight_infobox:
-        st.dataframe(data_flight[data_flight.ifplId == flight_id].astype(str).transpose(), 
+        st.dataframe(data_flight[data_flight.ifplId == flight_id].astype(str).transpose(),
                      use_container_width=True, height=420)
-        
+
     temp_col = len(data_fp[data_fp.ifplId == flight_id]) * ['FPLAN'] + len(data_fd[data_fd.ifplId == flight_id]) * ['FDATA']
     emission_data = pd.concat([
         data_fp[data_fp.ifplId == flight_id][['timestamp']],
@@ -84,10 +84,10 @@ with columns_content[0]:
     emission_data.insert(2, 'message_type', temp_col)
     emission_data = emission_data.sort_values('timestamp').reset_index(drop=True)
     fig = px.scatter(
-        emission_data, y='timestamp', 
-        color='flightState', 
+        emission_data, y='timestamp',
+        color='flightState',
         color_discrete_map = color_map,
-        symbol='message_type', 
+        symbol='message_type',
         symbol_sequence=['diamond-open-dot', 'circle'],
         height=325,)
     fig.update_traces(marker={'size': 6})
@@ -95,10 +95,10 @@ with columns_content[0]:
         legend=dict(yanchor="bottom", y=0.03, xanchor="right", x=0.99,), #, orientation="h",
         margin=dict(l=5, r=5, t=5, b=5),
         yaxis_title=None,
-    ) 
-    fig.add_hline(y=data_flight[data_flight.ifplId == flight_id].actualTakeOffTime.iloc[0], 
+    )
+    fig.add_hline(y=data_flight[data_flight.ifplId == flight_id].actualTakeOffTime.iloc[0],
                   line_width=1, line_dash="solid", line_color="green")
-    fig.add_hline(y=data_flight[data_flight.ifplId == flight_id].actualTimeOfArrival.iloc[0], 
+    fig.add_hline(y=data_flight[data_flight.ifplId == flight_id].actualTimeOfArrival.iloc[0],
                   line_width=1, line_dash="solid", line_color="red")
     fig.add_annotation(x=0, y=data_flight[data_flight.ifplId == flight_id].actualTakeOffTime.iloc[0],
                        yshift=10, showarrow=False, text="Takeoff", xref='paper')
@@ -108,13 +108,13 @@ with columns_content[0]:
 
     timestamps_evolution = px.line(
         data_fd[data_fd.ifplId == flight_list[flight_index]].rename({
-           'estimatedOffBlockTime':'estOffBlock', 
-           'estimatedTakeOffTime':'estTakeOff', 
-           'actualTakeOffTime':'actualTakeOff', 
+           'estimatedOffBlockTime':'estOffBlock',
+           'estimatedTakeOffTime':'estTakeOff',
+           'actualTakeOffTime':'actualTakeOff',
            'estimatedTimeOfArrival':'estArrival',
-           'actualTimeOfArrival':'actualArrival', 
-        }, axis=1), 
-        y=['estOffBlock', 'estTakeOff', 'actualTakeOff', 
+           'actualTimeOfArrival':'actualArrival',
+        }, axis=1),
+        y=['estOffBlock', 'estTakeOff', 'actualTakeOff',
            'estArrival', 'actualArrival'],
         x='timestamp',
     )

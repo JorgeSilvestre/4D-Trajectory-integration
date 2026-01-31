@@ -29,5 +29,5 @@ def test_sort_sequence(sequence):
     acc_list=[set(), set()]
     result = data.apply(is_resorted, args=[acc_list,False], axis=1)
 
-    assert result.to_list() == [True, False, True, True, False, False, 
+    assert result.to_list() == [True, False, True, True, False, False,
                                 False, True, False, True, False, False, False]

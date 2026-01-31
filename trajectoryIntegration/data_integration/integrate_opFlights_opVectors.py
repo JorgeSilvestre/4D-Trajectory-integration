@@ -64,8 +64,8 @@ def opensky_integrate_flight_vectors(date: str, source: str, airports_dep: list|
             joined_flights.append(flights[flights.flightId.isin(joined.flightId.drop_duplicates())])
             joined_vectors = joined[vectors.columns.to_list()+['flightId']].drop_duplicates()
         elif source == 'nm':
-            joined = joined[(joined.timestamp >= joined.actualTakeOffTime - params.TIME_SLACK) &
-                            (joined.timestamp <= joined.actualTimeOfArrival + params.TIME_SLACK)]
+            joined = joined[(joined.timestamp >= joined.actualTakeOffTime - params.TIME_EXPANSION) &
+                            (joined.timestamp <= joined.actualTimeOfArrival + params.TIME_EXPANSION)]
             joined_flights.append(flights[flights.ifplId.isin(joined.ifplId.drop_duplicates())])
             joined_vectors = joined[vectors.columns.to_list()+['ifplId']].drop_duplicates()
 

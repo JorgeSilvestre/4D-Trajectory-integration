@@ -30,12 +30,12 @@ Contains the following data folders:
 ### L2 (Raw trajectories)
 
 Contains the following data folders:
-- nmTrajectories: 
+- nmTrajectories:
     - Single parquet file partitioned by day.
     - Additional subfolders with a JSON file for each trajectory with its metadata.
 
 ### L3 (Clean trajectories)
 Contains the following data folders:
-- nmTrajectories: 
+- nmTrajectories:
     - Single parquet file partitioned by day.
     - Additional subfolders with a JSON file for each trajectory with its metadata.

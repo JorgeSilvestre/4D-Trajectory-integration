@@ -1,131 +1,85 @@
 # OpenSky Network
 
-This document describes the data obtained from the **OpenSky Network** and its role
-within this project. The focus is on the origin, structure and known limitations of
-the data, prior to any cleaning or integration steps.
+## Data source description
 
-OpenSky provides open air traffic surveillance data collected from a distributed
-network of ADS-B receivers operated by both volunteers and institutional partners.
+OpenSky Network is an open platform that collects and provides real-time and historical air traffic surveillance data. The data is primarily obtained from a worldwide network of ADS-B (Automatic Dependent Surveillance–Broadcast) receivers operated by volunteers and institutional partners. These receivers capture broadcasts emitted by aircraft, which include positional and kinematic information.
 
-In this project, two distinct datasets are extracted from OpenSky:
+The OpenSky Network provides access to both raw and processed surveillance data through different APIs and data products. In this project, OpenSky constitutes the main source of surveillance information, enabling the reconstruction of 4D aircraft trajectories based on time-stamped state vectors. Additionally, the Flights API is used to retrieve flight-level metadata that supports trajectory identification and integration with other data sources.
 
-- **State vectors**, representing aircraft positions over time.
-- **Flights**, representing flight-level summaries inferred from surveillance data.
-
-Although both datasets originate from the same source, they differ significantly in
-granularity, semantics and intended usage, and are therefore documented separately.
+The data is provided in structured formats (mainly JSON) and represents aircraft states sampled at irregular time intervals, depending on coverage and reception conditions.
 
 ---
 
 ## State Vectors
 
-### Source and access
+### Access
 
-State vectors are derived from ADS-B messages broadcast by aircraft and collected by
-the OpenSky Network receiver infrastructure. This preprocessing
-is performed by OpenSky and includes basic decoding and aggregation of ADS-B data.
-
-Each state vector represents an instantaneous estimate of the aircraft state at a
-given time.
+State vectors are accessed through the OpenSky Network API. Access is publicly available with rate limitations, while authenticated users are granted higher request quotas and extended access to historical data. Queries can be spatially and temporally filtered.
 
 ### Data structure
 
-Each state vector corresponds to a single aircraft observation. The main attributes
-used in this project are summarized below.
+Each state vector corresponds to a single aircraft observation. The main attributes used in this project are summarized below.
 
-| Attribute            | Type        | Description |
-|----------------------|-------------|-------------|
-| `icao24`             | string      | Unique aircraft identifier (ICAO 24-bit address) |
-| `callsign`           | string      | Aircraft callsign, if available |
-| `time_position`      | integer     | Timestamp of the position estimate (UNIX time, seconds) |
-| `last_contact`       | integer     | Timestamp of the last received ADS-B message |
-| `latitude`           | float       | WGS84 latitude (degrees) |
-| `longitude`          | float       | WGS84 longitude (degrees) |
-| `baro_altitude`      | float       | Barometric altitude (meters) |
-| `geo_altitude`       | float       | Geometric altitude (meters) |
-| `velocity`           | float       | Ground speed (m/s) |
-| `true_track`         | float       | Track angle relative to true north (degrees) |
-| `vertical_rate`      | float       | Vertical rate (m/s) |
-| `on_ground`          | boolean     | Indicates whether the aircraft is on the ground |
-| `squawk`             | string      | Transponder squawk code |
+| Attribute name  | Data type | Example value | Description                                      |
+| --------------- | --------- | ------------- | ------------------------------------------------ |
+| `icao24`        | string    | `"3451A2"`    | Unique ICAO 24-bit aircraft address.             |
+| `callsign`      | string    |               | Aircraft callsign, if available |
+| `time_position` | integer   | `1672531200`  | UNIX timestamp of the last known position.       |
+| `last_contact`  | integer   |               | Timestamp of the last received ADS-B message     |
+| `latitude`      | float     | `40.4719`     | Aircraft latitude in decimal degrees.            |
+| `longitude`     | float     | `-3.5626`     | Aircraft longitude in decimal degrees.           |
+| `baro_altitude` | float     | `9144.0`      | Barometric altitude in meters.                   |
+| `geo_altitude`  | float     |               | Geometric altitude (meters)                      |
+| `velocity`      | float     | `230.5`       | Ground speed in meters per second.               |
+| `heading`       | float     | `275.3`       | True track angle in degrees.                     |
+| `vertical_rate` | float     | `-7.6`        | Vertical speed in meters per second.             |
+| `on_ground`     | boolean   | `false`       | Indicates whether the aircraft is on the ground. |
+| `squawk`        | string    |               | Transponder squawk code |
 
-### Temporal characteristics
-
-- Observations are irregularly sampled.
-- Update rates vary across aircraft, time and geographic coverage.
-- Multiple observations may exist for the same aircraft within a short time window.
-- Two different timestamps are provided:
-  - `time_position`, associated with the latest ADS-B message indicating the aircraft's position.
-  - `last_contact`, associated with the latest ADS-B message of any type.
 
 ### Known data issues and limitations
+State vector data is affected by several quality issues inherent to ADS-B-based surveillance systems:
 
-State vector data exhibits several known issues that must be considered before
-trajectory reconstruction:
+- Irregular sampling rates, caused by heterogeneous receiver coverage and message loss.
+- Temporal gaps, particularly in low-coverage areas or at low altitudes.
+- Missing or null values for certain attributes (e.g., altitude or velocity).
+- Out-of-order timestamps, due to delayed message reception or aggregation artifacts.
+- Spurious or noisy measurements, especially during takeoff, landing, or maneuvering phases.
 
-- **Missing values** are frequent, especially for altitude, velocity and callsign.
-- **Invalid coordinates** may appear (e.g. latitude or longitude outside valid ranges).
-- **Duplicate observations** can occur for the same aircraft, time and position.
-- **Temporal inconsistencies** exist between `time_position` and `last_contact`.
-- **Inconsistent callsigns**, including trailing spaces and mixed casing.
-- **Uneven sampling density**, depending on receiver coverage and aircraft equipment.
-- **Altitude ambiguity**, as both barometric and geometric altitude may be present,
-  missing or inconsistent.
+These issues motivate the need for trajectory reconstruction, reordering, filtering, and quality assessment stages in the processing pipeline.
 
-These issues motivate a dedicated cleaning stage prior to any trajectory-level
-processing.
+Additional considerations derived from the used data source:
 
-
-
-- Missing values are common, especially for altitude and velocity-related fields.
-- Some observations may contain physically inconsistent values
-  (e.g. invalid coordinates).
-- Duplicate or near-duplicate observations can occur.
-- Aircraft identifiers and callsigns may include trailing spaces or inconsistent casing.
-- Data quality depends on receiver coverage and aircraft equipage.
+- Data are partitioned based on the local timezone of capture: Europe/Madrid. That is, for each partition the data ranges from 22:00:00 to 21:59:59 UTC.
 
 ---
 
 ## Flights API
 
-### Source and access
+### Access
 
-The Flights dataset is obtained through the OpenSky Flights API. It provides
-flight-level summaries inferred from state vector data using OpenSky internal
-segmentation heuristics.
-
-Each record represents a complete flight, from first to last detection.
+The Flights API is provided by OpenSky Network and allows querying flight-level information over a specified time interval. Access conditions are similar to those of the state vectors API, with public and authenticated tiers.
 
 ### Data structure
 
-Each flight record includes the following main attributes:
+Each record corresponds to a detected flight and aggregates information derived from surveillance data.
 
-| Attribute          | Type    | Description |
-|--------------------|---------|-------------|
-| `icao24`           | string  | Aircraft identifier |
-| `callsign`         | string  | Aircraft callsign |
-| `firstSeen`        | integer | Timestamp of first detection (UNIX time, seconds) |
-| `lastSeen`         | integer | Timestamp of last detection |
-| `estDepartureAirport` | string | Estimated departure airport (ICAO) |
-| `estArrivalAirport`   | string | Estimated arrival airport (ICAO) |
+| Attribute name        | Data type | Example value | Description                                   |
+| --------------------- | --------- | ------------- | --------------------------------------------- |
+| `icao24`              | string    | `"3451A2"`    | Unique ICAO 24-bit aircraft address.          |
+| `callsign`            | string    | `"IBE3152"`   | Aircraft callsign, if available.              |
+| `firstSeen`           | integer   | `1672526400`  | Timestamp of the first detected state vector. |
+| `lastSeen`            | integer   | `1672535400`  | Timestamp of the last detected state vector.  |
+| `estDepartureAirport` | string    | `"LEBL"`      | Estimated departure airport (ICAO code).      |
+| `estArrivalAirport`   | string    | `"LEMD"`      | Estimated arrival airport (ICAO code).        |
+
 
 
 ### Known data issues and limitations
 
-- Departure and arrival airports are estimated and may be missing or incorrect.
-- Flights may span multiple calendar days.
-- Callsigns may be missing or inconsistent.
-- Flight segmentation depends on internal OpenSky heuristics and may differ from
-  operational definitions.
-- Near-boundary flights may appear in multiple daily extracts.
-
-Blabla
-
-- Departure and arrival airports are estimated and may be missing or incorrect.
-- Callsigns may be inconsistent or missing.
-- Flights inferred near day boundaries may appear in multiple daily extracts.
-- Flight segmentation depends on OpenSky internal heuristics and may differ from
-  operational definitions.
+- Estimated airports may be missing or incorrect, as they are inferred from surveillance data.
+- Callsigns are not guaranteed to be present or consistent across the flight.
+- Flights with sparse surveillance coverage may be partially detected or fragmented.
 
 ---
 
@@ -133,3 +87,4 @@ Blabla
 
 - OpenSky Network API documentation:
   https://openskynetwork.github.io/opensky-api/
+- Schäfer et al. Bringing Up OpenSky: A Large-scale ADS-B Sensor Network for Research. IPSN 2014.

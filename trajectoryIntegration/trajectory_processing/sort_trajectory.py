@@ -1,6 +1,6 @@
-import concurrent
 import json
 import time
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -8,36 +8,27 @@ from tqdm import tqdm
 
 from .. import params, paths
 from ..trajectory import Trajectory
-from .sorting_algorithms import path_length, haversine_distance
 from .process_outliers import fix_altitude
+from .sorting_algorithms import haversine_distance, path_length
+
 
 def process_trajectories(date: str) -> None:
     tray_ids = (paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}').glob('*.json')
     tray_ids = [str(x).split('.')[1] for x in tray_ids]
     trays = (Trajectory(x, date) for x in tray_ids)
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=7) as executor:
-        # chunksize = 10
+    # Parallelized
+    with ProcessPoolExecutor(max_workers=7) as executor:
         result = tqdm(executor.map(_process_trajectory_params, trays, chunksize=1, buffersize=15),
                       total=len(tray_ids), ncols=125, leave=True)
         result = list(result)
 
-    # for t in tqdm(result, ncols=125, disable=False, desc=date, leave=False):
-    #     recalculate_timestamp(t)
-    #     # detect_outliers(t)
-    #     t.vectors.drop(['distance_org', 'distance_dst'], axis=1, inplace=True)
-    #     t.trajectory_status = 'L3_sorted'
-    #     t.save()
-    result = [t.vectors for t in result]
-
-    ### No paralelizado
+    ## Not Parallelized
     # result = []
-    # for trajectoryId in tqdm(tray_ids):
-    #     trajectory = Trajectory(trajectoryId, date)
-    #     sort_trajectory(trajectory)
-    #     result.append(trajectory.vectors)
-    #     trajectory.save()
+    # for tray in tqdm(trays, total=len(tray_ids), ncols=125, leave=True):
+    #     result.append(_process_trajectory_params(tray))
 
+    result = [t.vectors for t in result]
     result = pd.concat(result)
 
     folder = paths.NM_TRAJECTORIES_PATH
@@ -324,13 +315,14 @@ def recalculate_timestamp(trajectory: Trajectory) -> Trajectory:
     positions = data[['latitude','longitude']].to_numpy(dtype='float32')
     cum_sum = np.cumsum(haversine_distance(positions[:-1], positions[1:]))
     cum_sum = np.concatenate([cum_sum, [0]])
-    interp_values = data.timestamp.copy()
+    interp_values = (data.timestamp.astype('int64[pyarrow]')//10**9).copy()
     interp_values[data.is_moved.to_numpy()] = pd.NA
     interp_values.index = cum_sum
     interp_values = interp_values.interpolate(method='index', limit_direction='forward', limit_area='inside')
     interp_values = interp_values.interpolate(method='linear', limit_direction='both', limit_area='outside', order=1)
     interp_values = interp_values.round(0).astype('int64[pyarrow]').to_numpy()
-    data['timestamp'] = interp_values
+    data['timestamp'] = pd.to_datetime(interp_values, unit='s')
+    data['timestamp'] = data.timestamp.dt.tz_localize('utc')
 
     trajectory.vectors = data
 

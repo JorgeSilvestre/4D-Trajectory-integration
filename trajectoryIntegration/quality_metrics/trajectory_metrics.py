@@ -1,11 +1,12 @@
+import datetime
 import json
 
 import numpy as np
 import pandas as pd
 
 from .. import params, paths, utils
+from ..trajectory_processing import sorting_algorithms
 
-airports = pd.read_parquet(paths.AIRPORTS_PATH)
 
 def calculate_metrics_trajectories(date: str, trayType: str = 'raw'):
     if trayType == 'raw':
@@ -39,16 +40,19 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
                          'callsign', 'vertical_rate', 'velocity', 'altitude', 'true_track']].notnull().sum()
     results['completitude'] = {col:val/len(data) for col, val in completitude.items()}
     results['num_vectors'] = len(data)
-    results['duration'] = data.timestamp.max() - data.timestamp.min()
-    results['distance'] = calculate_traveled_distance(data)
+    results['duration'] = int((data.timestamp.max() - data.timestamp.min()).total_seconds())
+    results['distance'] = float(sorting_algorithms.path_length(data[['latitude', 'longitude']].to_numpy('float32')))
 
     ## Semantic
     results['distance_to_origin'] = calculate_distance_to_airport(data, metadata['aerodromeOfDeparture'], where='origin')
-    results['distance_to_destination'] = calculate_distance_to_airport(data, metadata['aerodromeOfDestination'], where='destination')
+    results['distance_to_destination'] = float( calculate_distance_to_airport(data, metadata['aerodromeOfDestination'], where='destination'))
     results['missing_start'] = bool(results['distance_to_origin'] > params.THRESHOLD_DISTANCE_TO_AIRPORT)
     results['missing_end'] = bool(results['distance_to_destination'] > params.THRESHOLD_DISTANCE_TO_AIRPORT)
     results['airports_distance'] = calculate_distance_airports(metadata['aerodromeOfDeparture'], metadata['aerodromeOfDeparture'])
-    results['effective_flight_time'] = metadata['actualTimeOfArrival']-metadata['actualTakeOffTime']
+    results['effective_flight_time'] = int((
+        datetime.datetime.fromisoformat(metadata['actualTimeOfArrival']) -
+        datetime.datetime.fromisoformat(metadata['actualTakeOffTime'])
+        ).total_seconds())
     # results['missing_taxi_start'] = bool(data[(data['distance_to_origin'] < AIRPORT_AREA) & data.on_ground])
     # results['missing_taxi_end'] = bool(data[(data['distance_to_destination'] < AIRPORT_AREA) & data.on_ground])
     results['last_altitude_before_ground'] = data.loc[data[~data.on_ground].timestamp.idxmax()].altitude
@@ -69,11 +73,11 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
     else:
         results['segments'].append(dict(start=latest, end=len(data)-1))
     results['num_segments'] = len(results['segments'])
-    results['gap_time'] = calculate_gap_time(data)
+    results['gap_time'] = int(calculate_gap_time(data))
     results['gap_ratio'] = results['gap_time']/results['duration'] if results['duration'] else 0
-    results['continuity_time'] = calculate_continuity_time(data)
+    results['continuity_time'] = int(calculate_continuity_time(data))
     results['continuity_ratio'] = results['continuity_time']/results['duration'] if results['duration'] else 0
-    results['discontinuity_time'] = calculate_discontinuity_time(data)
+    results['discontinuity_time'] = int(calculate_discontinuity_time(data))
     results['discontinuity_ratio'] = results['discontinuity_time']/results['duration'] if results['duration'] else 0
     results['thresholds'] = dict(
         THRESHOLD_DISTANCE_TO_AIRPORT = params.THRESHOLD_DISTANCE_TO_AIRPORT,
@@ -104,23 +108,24 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
 
     return results
 
-def calculate_traveled_distance(data):
-    return sum(utils.haversine_np(data.latitude.iloc[1:].values, data.longitude.iloc[1:].values,
-                                   data.latitude.iloc[:-1].values, data.longitude.iloc[:-1].values))
-
 def calculate_distance_to_airport(data, airport: str, where: str = 'origin'):
-    ap_location = pd.read_parquet(paths.AIRPORTS_PATH, engine='pyarrow', filters=[('icao', '==', airport)])
+    ap_location = pd.read_parquet(paths.AIRPORTS_PATH, engine='pyarrow',
+                                  filters=[('icao_code', '==', airport)])
     if where == 'origin':
         vector = data.iloc[0]
     elif where == 'destination':
         vector = data.iloc[-1]
-
+    return float(sorting_algorithms.haversine_distance(
+        data[['latitude','longitude']].iloc[:1,:].to_numpy(dtype='float32'),
+        ap_location[['latitude','longitude']].to_numpy(dtype='float32').reshape((1,2)))[0])
     return utils.haversine_np(vector.latitude, vector.longitude,
                                ap_location.latitude, ap_location.longitude)[0]
 
 def calculate_distance_airports(airport_dep: str, airport_dest: str):
-    origin_airport = airports[airports.icao == airport_dep].iloc[0]
-    destination_airport = airports[airports.icao == airport_dest].iloc[0]
+    airports = pd.read_parquet(paths.AIRPORTS_PATH)
+
+    origin_airport = airports[airports.icao_code == airport_dep].iloc[0]
+    destination_airport = airports[airports.icao_code == airport_dest].iloc[0]
     distance = utils.haversine_np(origin_airport.latitude,
                                   origin_airport.longitude,
                                   destination_airport.latitude,
@@ -128,35 +133,41 @@ def calculate_distance_airports(airport_dep: str, airport_dest: str):
     return distance
 
 def calculate_mean_granularity(data):
-    return np.mean(data.timestamp.iloc[1:].values - data.timestamp.iloc[:-1].values)
+    return np.mean(data.timestamp.diff().dt.total_seconds())
 
 def calculate_std_granularity(data):
-    return np.std(data.timestamp.iloc[1:].values - data.timestamp.iloc[:-1].values)
+    return np.std(data.timestamp.diff().dt.total_seconds())
 
 def calculate_mean_granularity_distance(data):
+    return float(np.mean(sorting_algorithms.haversine_distance(
+        data[['latitude', 'longitude']].iloc[1:].to_numpy('float32'),
+        data[['latitude', 'longitude']].iloc[:-1].to_numpy('float32'))))
     return float(np.mean(utils.haversine_np(data.latitude[1:].values, data.longitude[1:].values,
                                             data.latitude[:-1].values, data.longitude[:-1].values)))
 
 def calculate_std_granularity_distance(data):
-    return float(np.std(utils.haversine_np(data.latitude[1:].values, data.longitude[1:].values,
-                                      data.latitude[:-1].values, data.longitude[:-1].values)))
+    return float(np.std(sorting_algorithms.haversine_distance(
+        data[['latitude', 'longitude']].iloc[1:].to_numpy('float32'),
+        data[['latitude', 'longitude']].iloc[:-1].to_numpy('float32'))))
 
 def identify_gaps(data):
-    diffs = data.timestamp.iloc[1:].values - data.timestamp.iloc[:-1].values
-    gaps = [dict(index=i, size=d) for i, d in enumerate(diffs) if d>params.THRESHOLD_GAP_TIME]
+    diffs = data.timestamp.diff().dt.total_seconds()
+    gaps = [dict(index=i, size=int(diff))
+            for i, diff in enumerate(diffs)
+            if pd.notna(diff) and diff>params.THRESHOLD_GAP_TIME]
 
     return gaps
 
 def calculate_continuity_time(data):
-    diffs = data.timestamp.iloc[1:].values - data.timestamp.iloc[:-1].values
+    diffs = data.timestamp.diff().dt.total_seconds()
     return sum(diffs[diffs<=params.THRESHOLD_CONTINUITY])
 
 def calculate_discontinuity_time(data):
-    diffs = data.timestamp.iloc[1:].values - data.timestamp.iloc[:-1].values
-    return sum(diffs[(params.THRESHOLD_CONTINUITY<diffs)&(diffs<=params.THRESHOLD_GAP_TIME)])
+    diffs = data.timestamp.diff().dt.total_seconds()
+    return sum(diffs[diffs.between(params.THRESHOLD_CONTINUITY, params.THRESHOLD_GAP_TIME)])
 
 def calculate_gap_time(data):
-    diffs = data.timestamp.iloc[1:].values - data.timestamp.iloc[:-1].values
+    diffs = data.timestamp.diff().dt.total_seconds()
     return sum(diffs[diffs>params.THRESHOLD_GAP_TIME])
 
 def calculate_distance_ratio(data):

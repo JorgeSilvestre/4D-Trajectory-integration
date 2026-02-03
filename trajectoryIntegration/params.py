@@ -7,10 +7,6 @@ from .trajectory_processing.sorting_algorithms import (
 
 # THRESHOLDS AND CONSTANTS -------------------------------------------------------------------------
 
-# L1 - FLIGHT PLANS TIMEZONE ADJUSTMENT
-
-TIMEZONE_DISPLACEMENT_SECONDS = 0
-
 # L2 - INTEGRATION PARAMETERS
 
 # Integration parameters

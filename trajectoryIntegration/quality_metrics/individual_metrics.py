@@ -1,4 +1,6 @@
 import json
+import os
+from concurrent.futures import ProcessPoolExecutor
 
 import pandas as pd
 from tqdm import tqdm
@@ -7,7 +9,8 @@ from .. import paths, utils
 from ..data_cleaning.flight_plans import (nm_fdata_normalize_schema,
                                           nm_fplan_normalize_schema)
 from ..data_cleaning.surveillance import opensky_vectors_normalize_schema
-from ..data_cleaning.weather import taf_change_schema
+from ..data_cleaning.weather import taf_forecast_normalize_schema
+
 
 def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
     if state == 'raw':
@@ -22,24 +25,32 @@ def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
         return None
 
     res = []
-    for path in tqdm(file_list, desc=f'{date} VECTORS | Metrics', ncols=125):
-        data = pd.read_parquet(path, engine='pyarrow', dtype_backend='pyarrow')
-        if state == 'raw':
-            data = opensky_vectors_normalize_schema(data)
-        completitude_fields = data.columns
+    max_workers=os.cpu_count()
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        for path in tqdm(file_list, desc=f'{date} VECTORS | Metrics', ncols=125):
+            data = pd.read_parquet(path, engine='pyarrow', dtype_backend='pyarrow')
+            if state == 'raw':
+                step = len(data) // (4*max_workers)
+                processed_chunks = list(executor.map(
+                    opensky_vectors_normalize_schema,
+                    (data.iloc[i*step:(i+1)*step] for i in range(4*max_workers+1)),
+                    chunksize=1, buffersize=max_workers))
+                data = pd.concat(processed_chunks, axis=0)
+                # data = opensky_vectors_normalize_schema(data)
+            completitude_fields = data.columns
 
-        partial_results = {}
-        partial_results['num_vectors'] = len(data)
-        completitude = data.notnull().sum()
-        partial_results['completitude'] = {col:val/len(data) for col, val in completitude.items()}
-        partial_results['duplicate_records'] = data.shape[0] - data.drop_duplicates().shape[0]
-        partial_results['reused_position'] = data.shape[0] - data.drop_duplicates(subset=['icao24','time_position','latitude','longitude']).shape[0]
-        partial_results['nulls'] = {
-            'latitude': int(data.latitude.isna().sum()),
-            'longitude': int(data.longitude.isna().sum()),
-            'latlon': len(data) - len(data[['latitude','longitude']].dropna(how='all'))
-        }
-        res.append(partial_results)
+            partial_results = {}
+            partial_results['num_vectors'] = len(data)
+            completitude = data.notnull().sum()
+            partial_results['completitude'] = {col:val/len(data) for col, val in completitude.items()}
+            partial_results['duplicate_records'] = data.shape[0] - data.drop_duplicates().shape[0]
+            partial_results['reused_position'] = data.shape[0] - data.drop_duplicates(subset=['icao24','time_position','latitude','longitude']).shape[0]
+            partial_results['nulls'] = {
+                'latitude': int(data.latitude.isna().sum()),
+                'longitude': int(data.longitude.isna().sum()),
+                'latlon': len(data) - len(data[['latitude','longitude']].dropna(how='all'))
+            }
+            res.append(partial_results)
 
     results = {}
     results['state'] = state
@@ -179,7 +190,7 @@ def calculate_metrics_taf(month: str, state: str = 'clean') -> None:
 
     data = pd.read_parquet(folder, engine='pyarrow', dtype_backend='pyarrow')
     if state == 'raw':
-        data = taf_change_schema(data)
+        data = taf_forecast_normalize_schema(data)
 
     pepe = data.columns
 

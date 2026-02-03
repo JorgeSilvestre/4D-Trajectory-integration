@@ -2,21 +2,9 @@
 
 This document describes the **data cleaning stage (L1)** of the pipeline.
 
-At this level, each data source is processed **independently**, transforming raw inputs
-(L0) into standardized, validated and analysis-ready datasets, without performing
-cross-source integration.
+At this level, each data source is processed **independently**, transforming raw inputs (L0) into standardized, validated and analysis-ready datasets, without performing cross-source integration.
 
-Details about the structure, semantics and known issues of each raw data source are
-documented separately under `docs/raw_data/`.
-
-(This document describes the data cleaning operations applied to each data source in
-order to transform raw inputs (L0) into cleaned, source-consistent datasets (L1).
-
-Cleaning operations are designed to address known issues in the raw data while
-preserving as much original information as possible. No cross-source integration is
-performed at this stage.)
-
-
+Details about the structure, semantics and known issues of each raw data source are documented separately under `docs/raw_data/`.
 
 ---
 

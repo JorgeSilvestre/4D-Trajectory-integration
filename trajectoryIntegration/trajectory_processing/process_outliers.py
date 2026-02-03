@@ -4,7 +4,7 @@ from .. import params, paths
 from ..trajectory import Trajectory
 from ..utils import haversine_np, haversine_np_track
 
-airports = pd.read_parquet(paths.AIRPORTS_PATH)
+# airports = pd.read_parquet(paths.AIRPORTS_PATH)
 
 def outliers_median_filter(data: pd.Series, window, thresh) -> pd.Series:
     filled_sequence = data.interpolate(method='slinear', limit_area='inside')

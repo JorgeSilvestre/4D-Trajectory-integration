@@ -31,6 +31,7 @@ AIRPORTS_PATH = DATA_DIR / 'L1/airports/airports.parquet'
 
 # L2 - INTEGRATED
 NM_TRAJECTORIES_RAW_PATH = DATA_DIR / 'L2/nmTrajectories'
+TAF_INTEGRATED_PATH = DATA_DIR / 'L2/taf'
 # No se usan: se guardan directamente las trayectorias
 OPENSKY_JOINED_VECTORS_PATH = DATA_DIR / 'L2/openskyVectorsJoined'
 OPENSKY_JOINED_FLIGHTS_PATH = DATA_DIR / 'L2/openskyFlightsJoined'

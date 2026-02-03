@@ -2,7 +2,7 @@ from .data_cleaning import surveillance, flight_plans, weather
 from .data_cleaning import additional as clean_additional
 from .data_extraction import additional as extract_additional
 from .quality_metrics import individual_metrics, trajectory_metrics
-from .data_integration import integrate_nm_vectors
+from .data_integration import integrate_nm_vectors, integrate_taf
 import time
 from .trajectory import Trajectory
 from .trajectory_processing.sort_trajectory import process_trajectory, process_trajectories
@@ -18,13 +18,9 @@ def run():
     date = '2023-07-03'
     month = '2023-07'
 
-
-
-
     # Integration process
     if True:
         # L1
-        # extract_additional.extract_airports_ourAirports()
         # clean_additional.ourairports_airports_process()
 
         # individual_metrics.calculate_metrics_openskyVectors(date, state='raw')
@@ -32,7 +28,7 @@ def run():
         # individual_metrics.calculate_metrics_openskyVectors(date, state='clean')
 
         # individual_metrics.calculate_metrics_taf(month, 'raw')
-        # weather.taf_clean_parquet(month)
+        # weather.taf_forecast_process(month)
         # individual_metrics.calculate_metrics_taf(month, 'clean')
 
         # individual_metrics.calculate_metrics_fplan(date, 'raw')
@@ -46,13 +42,15 @@ def run():
         airport_orig = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
         airport_dest = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
 
-        # integrate_nm_vectors.nm_merge_fp_fd(date)
-        integrate_nm_vectors.nm_integrate_flight_vectors(date, airport_orig, airport_dest)
+        # integrate_taf.taf_current_report(month)
+        # integrate_nm_vectors.nm_merge_fplan_fdata(date)
+        # integrate_nm_vectors.nm_integrate_flight_vectors(date, airport_orig, airport_dest)
         # trajectory_metrics.calculate_metrics_trajectories(date, 'raw')
 
         # L3
         # process_trajectories(date)
         # trajectory_metrics.calculate_metrics_trajectories(date, 'clean')
+        integrate_taf.taf_integrate_vectors(date)
         pass
 
     # Sort trajectory

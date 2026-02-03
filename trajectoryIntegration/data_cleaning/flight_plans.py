@@ -16,56 +16,59 @@ maturity model where L0 is raw data and L1 corresponds to cleaned, source-level 
 
 import datetime
 import json
-import pytz
+import os
+from concurrent.futures import ProcessPoolExecutor
 
 import pandas as pd
+import pytz
 from tqdm import tqdm
 
-from .. import params, paths
+from .. import paths
 
-# Network Manager
+# Maps Network Manager Flight Plans API field names to our standardized attribute names
 NAME_MAPPING_FPLAN = {
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.ifplId' : 'ifplId',
-    'ps:FlightPlanMessage.timestamp' : 'timestamp',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.aircraftId' : 'callsign',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.aircraftAddress' : 'icao24',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aerodromeOfDeparture.icaoId' : 'aerodromeOfDeparture',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aerodromesOfDestination.aerodromeOfDestination.icaoId' : 'aerodromeOfDestination',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.estimatedOffBlockTime' : 'estimatedOffBlockTime',
-    'ps:FlightPlanMessage.flightPlanData.structured.aircraftOperator' : 'operator',
-    'ps:FlightPlanMessage.flightPlanData.structured.operatingAircraftOperator' : 'operatingOperator',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.registrationMark' : 'registrationMark',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.ssrInfo.code' : 'ssr',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.flightRules' : 'flightRules',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.flightType' : 'flightType',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftType.icaoId' : 'aircraftType',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.totalEstimatedElapsedTime' : 'totalEstimatedElapsedTime',
-    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.wakeTurbulenceCategory' : 'wakeTurbulenceCategory',
-    'ps:FlightPlanMessage.uuid' : 'uuid',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.ifplId': 'ifplId',
+    'ps:FlightPlanMessage.timestamp': 'timestamp',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.aircraftId': 'callsign',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.aircraftAddress': 'icao24',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aerodromeOfDeparture.icaoId': 'aerodromeOfDeparture',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aerodromesOfDestination.aerodromeOfDestination.icaoId': 'aerodromeOfDestination',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.estimatedOffBlockTime': 'estimatedOffBlockTime',
+    'ps:FlightPlanMessage.flightPlanData.structured.aircraftOperator': 'operator',
+    'ps:FlightPlanMessage.flightPlanData.structured.operatingAircraftOperator': 'operatingOperator',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.registrationMark': 'registrationMark',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftId.ssrInfo.code': 'ssr',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.flightRules': 'flightRules',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.flightType': 'flightType',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.aircraftType.icaoId': 'aircraftType',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.totalEstimatedElapsedTime': 'totalEstimatedElapsedTime',
+    'ps:FlightPlanMessage.flightPlanData.structured.flightPlan.wakeTurbulenceCategory': 'wakeTurbulenceCategory',
+    'ps:FlightPlanMessage.uuid': 'uuid',
 }
 
+# Maps Network Manager Flight Plans API field names to our standardized attribute names
 NAME_MAPPING_FDATA = {
-    'ps:FlightDataMessage.flightData.flightId.id' : 'ifplId',
-    'ps:FlightDataMessage.timestamp' : 'timestamp',
-    'ps:FlightDataMessage.flightData.flightId.keys.aircraftId' : 'callsign',
-    'ps:FlightDataMessage.flightData.aircraftAddress' : 'icao24',
-    'ps:FlightDataMessage.flightData.flightId.keys.aerodromeOfDeparture' : 'aerodromeOfDeparture',
-    'ps:FlightDataMessage.flightData.flightId.keys.aerodromeOfDestination' : 'aerodromeOfDestination',
-    'ps:FlightDataMessage.flightData.flightId.keys.estimatedOffBlockTime' : 'estimatedOffBlockTime',
-    'ps:FlightDataMessage.flightData.aircraftOperator' : 'operator',
-    'ps:FlightDataMessage.flightData.operatingAircraftOperator' : 'operatingOperator',
-    'ps:FlightDataMessage.flightData.estimatedTakeOffTime' : 'estimatedTakeOffTime',
-    'ps:FlightDataMessage.flightData.estimatedTimeOfArrival' : 'estimatedTimeOfArrival',
-    'ps:FlightDataMessage.flightData.actualOffBlockTime' : 'actualOffBlockTime',
-    'ps:FlightDataMessage.flightData.actualTakeOffTime' : 'actualTakeOffTime',
-    'ps:FlightDataMessage.flightData.actualTimeOfArrival' : 'actualTimeOfArrival',
-    'ps:FlightDataMessage.flightData.calculatedTakeOffTime' : 'calculatedTakeOffTime',
-    'ps:FlightDataMessage.flightData.calculatedTimeOfArrival' : 'calculatedTimeOfArrival',
-    'ps:FlightDataMessage.flightData.flightState' : 'flightState',
-    'ps:FlightDataMessage.flightData.flightDataVersionNr' : 'flightDataVersionNr',
-    'ps:FlightDataMessage.flightData.aircraftType' : 'aircraftType',
-    'ps:FlightDataMessage.flightData.routeLength' : 'routeLength',
-    'ps:FlightDataMessage.uuid' : 'uuid',
+    'ps:FlightDataMessage.flightData.flightId.id': 'ifplId',
+    'ps:FlightDataMessage.timestamp': 'timestamp',
+    'ps:FlightDataMessage.flightData.flightId.keys.aircraftId': 'callsign',
+    'ps:FlightDataMessage.flightData.aircraftAddress': 'icao24',
+    'ps:FlightDataMessage.flightData.flightId.keys.aerodromeOfDeparture': 'aerodromeOfDeparture',
+    'ps:FlightDataMessage.flightData.flightId.keys.aerodromeOfDestination': 'aerodromeOfDestination',
+    'ps:FlightDataMessage.flightData.flightId.keys.estimatedOffBlockTime': 'estimatedOffBlockTime',
+    'ps:FlightDataMessage.flightData.aircraftOperator': 'operator',
+    'ps:FlightDataMessage.flightData.operatingAircraftOperator': 'operatingOperator',
+    'ps:FlightDataMessage.flightData.estimatedTakeOffTime': 'estimatedTakeOffTime',
+    'ps:FlightDataMessage.flightData.estimatedTimeOfArrival': 'estimatedTimeOfArrival',
+    'ps:FlightDataMessage.flightData.actualOffBlockTime': 'actualOffBlockTime',
+    'ps:FlightDataMessage.flightData.actualTakeOffTime': 'actualTakeOffTime',
+    'ps:FlightDataMessage.flightData.actualTimeOfArrival': 'actualTimeOfArrival',
+    'ps:FlightDataMessage.flightData.calculatedTakeOffTime': 'calculatedTakeOffTime',
+    'ps:FlightDataMessage.flightData.calculatedTimeOfArrival': 'calculatedTimeOfArrival',
+    'ps:FlightDataMessage.flightData.flightState': 'flightState',
+    'ps:FlightDataMessage.flightData.flightDataVersionNr': 'flightDataVersionNr',
+    'ps:FlightDataMessage.flightData.aircraftType': 'aircraftType',
+    'ps:FlightDataMessage.flightData.routeLength': 'routeLength',
+    'ps:FlightDataMessage.uuid': 'uuid',
 }
 
 def flatten_dict(data: list[dict], paths: list[str]) -> list:
@@ -103,7 +106,7 @@ def flatten_dict(data: list[dict], paths: list[str]) -> list:
         return list(map(extract_attribute_rec, paths))
     return list(map(extract_attributes, data))
 
-def convert_time_column(column):
+def convert_time_column(column: pd.Series) -> pd.Series:
     """
     Convert ISO8601 timestamps to Unix epoch seconds.
 
@@ -116,10 +119,6 @@ def convert_time_column(column):
     Returns:
         pd.Series: Integer epoch timestamps in seconds.
     """
-    # column = pd.to_datetime(column, format='ISO8601').astype('int64[pyarrow]')//10**9
-    # TODO: Si no se hace esto, se generan fechas extrañas (año 1600). Comprobar
-    # column = column.apply(lambda x: x if x>0 else pd.NA)
-    # column = column - params.TIMEZONE_DISPLACEMENT_SECONDS
 
     column = pd.to_datetime(column.sort_values(), format='ISO8601', cache=True)
     if column.dt.tz is not None:
@@ -128,7 +127,7 @@ def convert_time_column(column):
         column = column.dt.tz_localize(pytz.timezone('Europe/Madrid'))
         column = column.dt.tz_convert(pytz.utc)
 
-    return column
+    return column #.astype('int64[pyarrow]')
 
 ### FLIGHT PLANS ----------------------------------------------------------------------------------
 def nm_fplan_process(date: str) -> None:
@@ -143,18 +142,12 @@ def nm_fplan_process(date: str) -> None:
         date: String with a date in format 'YYYY-MM-DD'
     """
 
-    ## Load -------------------------------------------------------------------
     input_file = paths.NM_JSON_FPLAN_PATH / f'flightDate={date}' / f'flightDate={date}.json'
     with open(input_file, 'r', encoding='utf8') as file:
         data = [json.loads(x) for x in file]
     fplan = nm_fplan_normalize_schema(data)
     del data
-
-    ## Cleaning ---------------------------------------------------------------
-
     fplan = nm_fplan_clean(fplan)
-
-    ## Save data -------------------------------------------------------------
     output_dir = paths.NM_PARQUET_FPLAN_PATH
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -172,29 +165,63 @@ def nm_fdata_process(date: str) -> None:
         date: String with a date in format 'YYYY-MM-DD'
     """
 
-    ## Load -------------------------------------------------------------------
     data = []
     file_list = list((paths.NM_JSON_FDATA_PATH / f'flightDate={date}').glob('*.json'))
-    for file_path in tqdm(file_list, desc=f'{date} FDATA   | Clean  ', ncols=125):
-        with open(file_path, 'r', encoding='utf8') as file:
-            chunk = [json.loads(x) for x in file]
-        chunk = nm_fdata_normalize_schema(chunk)
-        data.append(chunk)
-    fdata = pd.concat(data)
-    del data
-
-    ## Cleaning ---------------------------------------------------------------
-
-    fdata = nm_fdata_clean(fdata)
-
-    ### Save data -------------------------------------------------------------
+    max_workers=os.cpu_count()
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        for file_path in tqdm(file_list, desc=f'{date} FDATA   | Clean  ', ncols=125):
+            with open(file_path, 'r', encoding='utf8') as file:
+                chunk = [json.loads(x) for x in file]
+            chunk = nm_fdata_normalize_schema(chunk)
+            chunk = nm_fdata_clean(chunk)
+            data.append(chunk)
+        fdata = pd.concat(data)
+        del data
     output_dir = paths.NM_PARQUET_FDATA_PATH
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
     output_file = output_dir / f'nm.fdata.{date}.parquet'
     fdata.to_parquet(output_file, index=False)
 
-def nm_fplan_normalize_schema(data: list[dict])  -> pd.DataFrame:
+def nm_fdata_process(date: str) -> None:
+    """
+    Process NM Flight Data (FDATA) messages for a given date into L1 parquet files.
+
+    Messages are ordered by flight data version number, normalized and cleaned to
+    produce a consolidated snapshot per flight plan.
+
+    Args:
+        date: String with a date in format 'YYYY-MM-DD'
+    """
+
+    data = []
+    file_list = list((paths.NM_JSON_FDATA_PATH / f'flightDate={date}').glob('*.json'))
+    for file_path in tqdm(file_list, desc=f'{date} FDATA   | Clean  ', ncols=125):
+        buffer = []
+        with open(file_path, 'r', encoding='utf8') as file:
+            for line in file:
+                buffer.append(json.loads(line))
+                if len(buffer) == 100_000:
+                    chunk = nm_fdata_normalize_schema(buffer)
+                    chunk = nm_fdata_clean(chunk)
+                    data.append(chunk)
+                    buffer = []
+            else:
+                chunk = nm_fdata_normalize_schema(buffer)
+                chunk = nm_fdata_clean(chunk)
+                data.append(chunk)
+    fdata = pd.concat(data)
+    del data
+    output_dir = paths.NM_PARQUET_FDATA_PATH
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
+    output_file = output_dir / f'nm.fdata.{date}.parquet'
+    fdata.to_parquet(output_file, index=False)
+
+def _parallelize_nm_fdata_process(str):
+    pass
+
+def nm_fplan_normalize_schema(data: list[dict]) -> pd.DataFrame:
     """
     Process NM Flight Plan (FPLAN) messages for a given date into L1 parquet files.
 
@@ -207,21 +234,19 @@ def nm_fplan_normalize_schema(data: list[dict])  -> pd.DataFrame:
     column_names = NAME_MAPPING_FPLAN.values()
     fplan = pd.DataFrame(data, columns=column_names)
     del data
-
-    ## Data cleaning ----------------------------------------------------------
-    # Data type
+    # Change data types
     fplan['timestamp'] = convert_time_column(fplan.timestamp)
     fplan['estimatedOffBlockTime'] = convert_time_column(fplan.estimatedOffBlockTime)
     string_columns = [
         'ifplId', 'icao24', 'callsign', 'operator', 'operatingOperator',
         'aerodromeOfDeparture', 'aerodromeOfDestination', 'flightType',
-        'wakeTurbulenceCategory', 'uuid', 'registrationMark']
+        'wakeTurbulenceCategory', 'uuid', 'registrationMark', ]
     for c in string_columns:
         fplan[c] = fplan[c].astype('string[pyarrow]')
 
     return fplan
 
-def nm_fdata_normalize_schema(data: list[dict])  -> pd.DataFrame:
+def nm_fdata_normalize_schema(data: list[dict]) -> pd.DataFrame:
     """
     Convert OpenSky flight event JSON files into L1 parquet format.
 
@@ -233,8 +258,7 @@ def nm_fdata_normalize_schema(data: list[dict])  -> pd.DataFrame:
     column_names = NAME_MAPPING_FDATA.values()
     fdata = pd.DataFrame(data, columns = column_names)
     del data
-
-    # Data type
+    # Change data types
     fdata['routeLength'] = fdata.routeLength.astype('Int32[pyarrow]')
     fdata['flightDataVersionNr'] = fdata.flightDataVersionNr.astype('Int32[pyarrow]')
     time_columns = [
@@ -246,8 +270,9 @@ def nm_fdata_normalize_schema(data: list[dict])  -> pd.DataFrame:
     for c in time_columns:
         fdata[c] = convert_time_column(fdata[c])
     string_columns = [
-        'ifplId', 'icao24', 'callsign', 'aerodromeOfDeparture', 'aerodromeOfDestination',
-        'operator', 'operatingOperator', 'flightState', 'aircraftType', 'uuid']
+        'ifplId', 'icao24', 'callsign', 'aerodromeOfDeparture',
+        'aerodromeOfDestination', 'operator', 'operatingOperator',
+        'flightState', 'aircraftType', 'uuid', ]
     for c in string_columns:
         fdata[c] = fdata[c].astype('string[pyarrow]')
 
@@ -268,13 +293,14 @@ def nm_fplan_clean(fplan: pd.DataFrame) -> pd.DataFrame:
     fplan['aerodromeOfDestination'] = fplan.aerodromeOfDestination.str.strip()
     # Expected format: HHMM (NM specification)
     fplan['totalEstimatedElapsedTime'] = fplan.totalEstimatedElapsedTime.apply(
-        lambda x: (int(x[:2])*60+int(x[2:])) if not pd.isna(x) else x).astype('int32[pyarrow]')
+        lambda x: (int(x[:2])*60+int(x[2:])) if not pd.isna(x) else x
+    ).astype('int32[pyarrow]')
 
     # Fill missing attributes in the last fplan message
     fplan['ifplId_group'] = fplan.ifplId.copy()
     propagate_columns = [
         'icao24', 'registrationMark', 'ssr', 'flightType',
-        'totalEstimatedElapsedTime', 'wakeTurbulenceCategory']
+        'totalEstimatedElapsedTime', 'wakeTurbulenceCategory', ]
     for pc in propagate_columns:
         fplan[pc] = fplan.groupby('ifplId_group')[pc].ffill()
     fplan = fplan.drop('ifplId_group', axis=1)
@@ -314,10 +340,10 @@ def nm_fdata_clean(fdata: pd.DataFrame) -> pd.DataFrame:
 
 # OpenSky Flights
 NAME_MAPPING_OPENSKY_FLIGHTS = {
-    'firstSeen' : 'flightStart',
-    'estDepartureAirport' : 'departureAirport',
-    'lastSeen' : 'flightEnd',
-    'estArrivalAirport' : 'destinationAirport',
+    'firstSeen': 'flightStart',
+    'estDepartureAirport': 'departureAirport',
+    'lastSeen': 'flightEnd',
+    'estArrivalAirport': 'destinationAirport',
 }
 
 def opensky_flights_json_to_parquet(date: str) -> None:

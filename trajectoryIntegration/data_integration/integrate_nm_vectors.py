@@ -4,20 +4,16 @@ import datetime
 
 from .. import params, paths, utils
 
-flight_attribute_names = [
+FLIGHT_ATTRIBUTE_NAMES = [
     'ifplId', 'icao24', 'callsign',
-    'estimatedOffBlockTime', 'aerodromeOfDeparture',
-    'aerodromeOfDestination', 'operator', 'operatingOperator',
-    'flightState',
+    'estimatedOffBlockTime', 'aerodromeOfDeparture', 'aerodromeOfDestination',
+    'operator', 'operatingOperator', 'flightState',
     'estimatedTakeOffTime', 'estimatedTimeOfArrival', 'actualTakeOffTime',
-    'actualTimeOfArrival',
-    'calculatedTakeOffTime',
-    'calculatedTimeOfArrival',
-    'flightType', 'registrationMark', 'ssr',
-    'totalEstimatedElapsedTime', 'wakeTurbulenceCategory',
-    'aircraftType', 'routeLength', ]
+    'actualTimeOfArrival', 'calculatedTakeOffTime', 'calculatedTimeOfArrival',
+    'flightType', 'registrationMark', 'ssr', 'totalEstimatedElapsedTime',
+    'wakeTurbulenceCategory', 'aircraftType', 'routeLength', ]
 
-def nm_merge_fp_fd(date: str) -> None:
+def nm_merge_fplan_fdata(date: str) -> None:
     """Merge NM flight plan and flight data from a given date
 
     Args:
@@ -36,9 +32,7 @@ def nm_merge_fp_fd(date: str) -> None:
     fplan = fplan.loc[last_fplan]
 
     # Find last flight data version
-    # last_fdata = (fdata.groupby('ifplId').flightDataVersionNr.idxmax())
-    # fdata = fdata.loc[last_fdata]
-    # Para evitar últimos FDATA que modifican actualTimeOfArrival
+    # Avoid those FDATA messages that change actualTimeOfArrival
     last_fdata = []
     for gr_id, gr in fdata.groupby('ifplId'):
         if len(gr[gr.flightState == 'TERMINATED'])>1:
@@ -49,35 +43,39 @@ def nm_merge_fp_fd(date: str) -> None:
     fdata = pd.DataFrame(last_fdata)
 
     # Join FP-FD and consolidate duplicated columns
-    flights = pd.merge(fplan, fdata, on = 'ifplId')
+    flights = pd.merge(fplan, fdata, on='ifplId')
     flights['icao24'] = flights.icao24_y.combine_first(flights.icao24_x)
-    flights = flights.drop(['icao24_x', 'icao24_y'], axis = 1)
+    flights = flights.drop(['icao24_x', 'icao24_y'], axis=1)
     flights['callsign'] = flights.callsign_y.combine_first(flights.callsign_x)
-    flights = flights.drop(['callsign_x', 'callsign_y'], axis = 1)
+    flights = flights.drop(['callsign_x', 'callsign_y'], axis=1)
     flights['estimatedOffBlockTime'] = flights.estimatedOffBlockTime_y.combine_first(flights.estimatedOffBlockTime_x)
-    flights = flights.drop(['estimatedOffBlockTime_x', 'estimatedOffBlockTime_y'], axis = 1)
+    flights = flights.drop(['estimatedOffBlockTime_x', 'estimatedOffBlockTime_y'], axis=1)
     flights['aerodromeOfDeparture'] = flights.aerodromeOfDeparture_y.combine_first(flights.aerodromeOfDeparture_x)
-    flights = flights.drop(['aerodromeOfDeparture_x', 'aerodromeOfDeparture_y'], axis = 1)
+    flights = flights.drop(['aerodromeOfDeparture_x', 'aerodromeOfDeparture_y'], axis=1)
     flights['aerodromeOfDestination'] = flights.aerodromeOfDestination_y.combine_first(flights.aerodromeOfDestination_x)
-    flights = flights.drop(['aerodromeOfDestination_x', 'aerodromeOfDestination_y'], axis = 1)
+    flights = flights.drop(['aerodromeOfDestination_x', 'aerodromeOfDestination_y'], axis=1)
     flights['operator'] = flights.operator_y.combine_first(flights.operator_x)
-    flights = flights.drop(['operator_x', 'operator_y'], axis = 1)
+    flights = flights.drop(['operator_x', 'operator_y'], axis=1)
     flights['operatingOperator'] = flights.operatingOperator_y.combine_first(flights.operatingOperator_x)
-    flights = flights.drop(['operatingOperator_x', 'operatingOperator_y'], axis = 1)
+    flights = flights.drop(['operatingOperator_x', 'operatingOperator_y'], axis=1)
     flights['aircraftType'] = flights.aircraftType_y.combine_first(flights.aircraftType_x)
-    flights = flights.drop(['aircraftType_x', 'aircraftType_y'], axis = 1)
+    flights = flights.drop(['aircraftType_x', 'aircraftType_y'], axis=1)
 
     # Ensure that joined FP-FD pairs refer to the same flight (due to ifplId reutilization)
-    flights = flights[(flights.actualTakeOffTime > flights.estimatedOffBlockTime - pd.Timedelta(days=1)) &
-                      (flights.actualTimeOfArrival < flights.estimatedOffBlockTime + pd.Timedelta(days=2))]
-
+    flights = flights[
+        (flights.actualTakeOffTime > flights.estimatedOffBlockTime - pd.Timedelta(days=1)) &
+        (flights.actualTimeOfArrival < flights.estimatedOffBlockTime + pd.Timedelta(days=2))
+    ]
+    # flights = flights[
+    #     (flights.actualTakeOffTime > flights.estimatedOffBlockTime - 24*3600) &
+    #     (flights.actualTimeOfArrival < flights.estimatedOffBlockTime + 2*24*3600)
+    # ]
+    # Drop duplicate records
     flights = flights.drop_duplicates()
-
     # Drop timestamp and FDATA message version column
     flights = flights.drop(['timestamp', 'flightDataVersionNr'], axis=1)
-
     # Sort columns
-    flights = flights[flight_attribute_names]
+    flights = flights[FLIGHT_ATTRIBUTE_NAMES]
 
     output_folder = paths.NM_PARQUET_FLIGHTS_PATH
     if not output_folder.exists():
@@ -85,7 +83,9 @@ def nm_merge_fp_fd(date: str) -> None:
     output_file = paths.NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet'
     flights.to_parquet(output_file, index=False)
 
-def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), airports_dest: list|tuple = tuple()) -> None:
+def nm_integrate_flight_vectors(date: str, 
+                                airports_dep: list|tuple = tuple(), 
+                                airports_dest: list|tuple = tuple()) -> None:
     """Join flight data and state vectors to identify individual trajectories
 
     Args:
@@ -107,6 +107,7 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
         filters.append(('aerodromeOfDestination','in',airports_dep))
     flights = pd.read_parquet(paths.NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet',
                               engine='pyarrow', dtype_backend='pyarrow', filters=filters)
+    
     integration_metrics['num_flights_initial'] = len(flights)
     # Remove flights with the same origin and destination
     flights = flights[flights.aerodromeOfDeparture != flights.aerodromeOfDestination]
@@ -116,7 +117,7 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
     # OpenSky data
     # Include vectors from the next day (in case the flight takes place between two days)
     date_dt =  datetime.datetime.strptime(date, '%Y-%m-%d')
-    date_next_dt = date_dt + datetime.timedelta(days=1)
+    date_next_dt = (date_dt + datetime.timedelta(days=1))
     date_next = date_next_dt.strftime('%Y-%m-%d')
 
     file_paths = []
@@ -125,8 +126,7 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
     if (paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date_next}').exists():
         file_paths += list(paths.OPENSKY_PARQUET_VECTORS_PATH.glob(f'flightDate={date_next}/*.parquet'))
 
-
-    ## Integration ------------------------------------------------------------
+    ## Integration --------------------------------------------------------------------------------
 
     print(f'#       {"Vectors":<15}{"Flights":<15}{"Join vectors":<15}' +
           f'{"% join vec":<18}{"Join flights":<15}{"% join fl":<18}')
@@ -140,11 +140,16 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
 
         # Merge by icao24
         vectors_icao = vectors[vectors.icao24.isin(flights.icao24.unique())]
+        del vectors
         if len(vectors_icao) == 0:
             continue
-        joined = pd.merge(vectors_icao.drop('callsign',axis=1), flights, on='icao24', how='inner')
-        joined = joined[(joined.timestamp >= joined.actualTakeOffTime - pd.Timedelta(seconds=params.TIME_EXPANSION)) &
-                        (joined.timestamp <= joined.actualTimeOfArrival + pd.Timedelta(seconds=params.TIME_EXPANSION))]
+        joined = pd.merge(vectors_icao.drop('callsign', axis=1), flights, on='icao24', how='inner')
+        joined = joined[
+            (joined.timestamp >= joined.actualTakeOffTime - pd.Timedelta(seconds=params.TIME_EXPANSION)) &
+            (joined.timestamp <= joined.actualTimeOfArrival + pd.Timedelta(seconds=params.TIME_EXPANSION))]
+        # joined = joined[
+        #     (joined.timestamp >= joined.actualTakeOffTime - params.TIME_EXPANSION) &
+        #     (joined.timestamp <= joined.actualTimeOfArrival + params.TIME_EXPANSION)]
         joined = joined.loc[:, vectors_icao.columns.to_list()+['ifplId']].drop_duplicates()
         joined_icao24 = joined.ifplId.drop_duplicates()
         if len(joined)>0:
@@ -170,7 +175,7 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
         if idx<first_day_files:
             integration_metrics['num_vectors'] += num_vec
 
-    ## Write data -------------------------------------------------------------
+    ## Write data ---------------------------------------------------------------------------------
 
     if joined_vectors_acc:
         joined_vectors = pd.concat(joined_vectors_acc).drop_duplicates()
@@ -192,7 +197,8 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
         folder = paths.NM_TRAJECTORIES_RAW_PATH
         if not folder.exists():
             folder.mkdir(parents=True)
-        joined_vectors.reset_index(drop=True).to_parquet(folder / f'tray.{date}.parquet', index=False)
+        file_path = folder / f'tray.{date}.parquet'
+        joined_vectors.reset_index(drop=True).to_parquet(file_path, index=False)
 
         # Write trajectory metadata
         folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}'
@@ -208,7 +214,9 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
                 icao24=flight.icao24.values[0],
                 aerodromeOfDeparture=flight.aerodromeOfDeparture.values[0],
                 aerodromeOfDestination=flight.aerodromeOfDestination.values[0],
-                airline=flight.operator.values[0] if pd.notna(flight.operator.values[0]) else flight.operatingOperator.values[0],
+                airline=flight.operator.values[0] 
+                        if pd.notna(flight.operator.values[0]) 
+                        else flight.operatingOperator.values[0],
                 estimatedTakeOffTime=(flight.estimatedTakeOffTime.values[0]),
                 estimatedTimeOfArrival=(flight.estimatedTimeOfArrival.values[0]),
                 actualTakeOffTime=(flight.actualTakeOffTime.values[0]),
@@ -227,7 +235,8 @@ def nm_integrate_flight_vectors(date: str, airports_dep: list|tuple = tuple(), a
         # Write integration metrics
         if not paths.INTEGRATION_METRICS_PATH.exists():
             paths.INTEGRATION_METRICS_PATH.mkdir(parents=True)
-        with open(paths.INTEGRATION_METRICS_PATH / f'integration.{date}.json', 'w+', encoding='utf8') as file:
+        file_path = paths.INTEGRATION_METRICS_PATH / f'integration.{date}.json'
+        with open(file_path, 'w+', encoding='utf8') as file:
             json.dump(integration_metrics, file, indent=2, default=utils.custom_json_encoder)
 
     # if joined_flights_acc:

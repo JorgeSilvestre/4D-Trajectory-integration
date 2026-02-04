@@ -36,7 +36,7 @@ def process_trajectories(date: str) -> None:
         path = folder / f'tray.{date}.parquet'
         result.to_parquet(path, index=False,)
 
-def _process_trajectory_params(trajectory: Trajectory):
+def _process_trajectory_params(trajectory: Trajectory) -> Trajectory:
     trajectory = process_trajectory(
         trajectory,
         mode=params.HOW_SORT,
@@ -48,7 +48,7 @@ def _process_trajectory_params(trajectory: Trajectory):
     return trajectory
 
 def process_trajectory(trajectory: Trajectory, mode, algorithm, presort,
-                       presort_algs={}, check_loop=True, log=False):
+                       presort_algs={}, check_loop=True, log=False) -> Trajectory:
     trajectory = sort_trajectory(trajectory=trajectory,
                                 mode=mode,
                                 algorithm=algorithm,
@@ -141,28 +141,36 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
             data = sort_trajectory_segmented(data, presort_algs)
     metrics['distance_presort'] = float(path_length(data[['latitude','longitude']].to_numpy(dtype='float32')))
 
-    if check_loop:
-        ### Holding maneuver detection
-        # TODO
-        # temp = data[(data.distance_dst.between(params.TMA_AREA_MIN, params.TMA_AREA_MAX)) & (data.altitude>0)].copy()
-        # track_variation = calculate_rotation(temp.true_track)
-        # metrics['rotation'] = float(track_variation)
+    temp = data[(data.distance_dst.between(params.TMA_AREA_MIN, params.TMA_AREA_MAX)) & (data.altitude>0)].copy()
+    max_rotation = calculate_max_rotation(temp.true_track)
+    del temp
+    metrics['rotation'] = float(max_rotation)
+    # If there is a holding, do not sort the last segment
+    if check_loop and max_rotation>params.HOLDING_ROTATION:
+        alg = {
+            'out': algorithm['out'],
+            'cruise': algorithm['cruise'],
+        }
+        data = sort_trajectory_segmented(data, alg)
+    # If there is a loop, sort the last segment with specific method
+    elif check_loop and max_rotation>params.LOOP_ROTATION:
+        alg = {
+            'out': algorithm['complete'] if mode=='complete' else algorithm['out'],
+            'cruise': algorithm['complete']  if mode=='complete' else algorithm['cruise'],
+            'in': params.LOOP_ALG,
+        }
+        data = sort_trajectory_segmented(data, alg)
+    else:
+        if mode == 'complete':
+            data = sort_trajectory_complete(data, algorithm['complete'])
+        elif mode == 'segmented':
+            data = sort_trajectory_segmented(data, algorithm)
 
-        # del temp
-
-        # TODO: Método especial de reordenación si hay un loop (solo segmented?)
-        pass
-
-    if mode == 'complete':
-        data = sort_trajectory_complete(data, algorithm['complete'])
-    elif mode == 'segmented':
-        data = sort_trajectory_segmented(data, algorithm)
-
-    data = pd.concat(
-        [ground_org,
+    data = pd.concat([
+        ground_org,
         data,
-        ground_dst,]
-    ).dropna(subset='old_index').reset_index(drop=True)
+        ground_dst,
+    ]).dropna(subset='old_index').reset_index(drop=True)
     del ground_org, ground_dst
 
     data['new_index'] = range(len(data))
@@ -171,6 +179,10 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     metrics['final_distance'] = float(path_length(data[['latitude','longitude']].to_numpy(dtype='float32')))
     metrics['final_num_vectors'] = len(data)
     metrics['process_time'] = time.time() - ts_start
+
+    # print results
+    # print(metrics["initial_distance"], 'Mi ->', metrics["final_distance"], 
+    #       f'Mi (-{((metrics["initial_distance"]-metrics["final_distance"])/metrics["initial_distance"]):.2%})')
 
     if log:
         folder = paths.SORT_TRAJECTORIES_METRICS_PATH
@@ -211,13 +223,16 @@ def sort_trajectory_segmented(data: pd.DataFrame, algorithm_conf) -> pd.DataFram
     overlap = 5
 
     ######################### Sort #########################
-    if algorithm_conf['out']:
+    if 'out' in algorithm_conf:
         maneuver_org = pd.concat([maneuver_org, destination])
         sort_trajectory_complete(maneuver_org, algorithm_conf['out']).iloc[:-1]
-    if algorithm_conf['cruise']:
+    if 'cruise' in algorithm_conf:
         cruise = pd.concat([maneuver_org[-overlap:], cruise, destination])
         cruise = sort_trajectory_complete(cruise, algorithm_conf['cruise']).iloc[:-1]
-    if algorithm_conf['in']:
+    if 'loop' in algorithm_conf:
+        maneuver_dst = pd.concat([cruise[-overlap:], maneuver_dst])
+        maneuver_dst = sort_trajectory_complete(maneuver_dst, algorithm_conf['in'])
+    elif 'in' in algorithm_conf:
         maneuver_dst = pd.concat([cruise[-overlap:], maneuver_dst])
         maneuver_dst = sort_trajectory_complete(maneuver_dst, algorithm_conf['in'])
 
@@ -233,7 +248,8 @@ def calculate_max_rotation(tracks: pd.Series):
     if len(tracks) < 2:
         return 0.0
     deltas = tracks.diff().dropna()
-    deltas = (deltas + 180) % 360 - 180
+    # mod operation throws NotImplementedError from pyarrow -> cast to numpy
+    deltas = (deltas.to_numpy('float32') + 180) % 360 - 180 
 
     turn_right = (deltas[deltas>0].sum())
     turn_left = -(deltas[deltas<0].sum())

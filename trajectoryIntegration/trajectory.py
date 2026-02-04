@@ -130,7 +130,7 @@ class Trajectory():
         folder = NM_TRAJECTORIES_PATH / f'flightDate={self.date}'
         if not folder.exists(): folder.mkdir(parents=True)
         with open(folder / f'tray.{self.ifplId}.json', 'w+', encoding='utf8') as file:
-            json.dump(metadata, file, default=utils.custom_json_encoder)
+            json.dump(metadata, file, indent=2, default=utils.custom_json_encoder)
 
         if self.save_single_tray:
             self.vectors.to_parquet(NM_TRAJECTORIES_PATH / f'tray.{self.date}.parquet', engine='pyarrow')

@@ -68,13 +68,13 @@ SORT_ALG = {
             'distance_function': 'haversine',
         },
     },
-    'loop': {
-        'algorithm': opt2_progressive,
-        'options': {
-            'distance_function': 'haversine',
-            'window_size': 30,
-            'overlap': 10,
-        },
+}
+LOOP_ALG = {
+    'algorithm': opt2_progressive,
+    'options': {
+        'distance_function': 'haversine',
+        'window_size': 30,
+        'overlap': 10,
     },
 }
 PRESORT = True

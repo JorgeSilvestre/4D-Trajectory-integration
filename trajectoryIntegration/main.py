@@ -19,7 +19,7 @@ def run():
     month = '2023-07'
 
     # Integration process
-    if True:
+    if False:
         # L1
         # clean_additional.ourairports_airports_process()
 
@@ -54,10 +54,10 @@ def run():
         pass
 
     # Sort trajectory
-    if False:
+    if True:
         # AT02603204
         tray = Trajectory('AT02603928', '2023-07-03', 'raw')
-        res = process_trajectory(tray, 'complete', params.SORT_ALG, False, {}, False, False)
+        res = process_trajectory(tray, 'complete', params.SORT_ALG, False, {}, True, False)
         pass
 
     # Time benchmark

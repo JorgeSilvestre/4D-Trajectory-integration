@@ -6,6 +6,11 @@ At this level, each data source is processed **independently**, transforming raw
 
 Details about the structure, semantics and known issues of each raw data source are documented separately under `docs/raw_data/`.
 
+<figure align="center" >
+<img src="../assets/cleaning_pipeline.png" width="600"  alt="">
+<figcaption>Overview of the cleaning pipeline.</figcaption>
+</figure>
+
 ---
 
 ## Scope of L1 Cleaning
@@ -115,13 +120,12 @@ trajectory reconstruction or are inconsistent across records.
 
 The following operations are applied:
 
-- Removal of unused attributes that are not used downstream (e.g. sensor metadata).
+- Removal of unused attributes that are not used downstream (e.g. spi or position source) or empty (e.g. sensor metadata).
 - Renaming of selected attributes to ensure a consistent naming convention across
   data sources.
-- Explicit casting of all columns to well-defined data types.
+- Explicit casting of several columns to well-defined data types.
 
-Timestamps are converted to UNIX time in seconds and stored as integer values.
-Geospatial and kinematic variables are stored using floating-point precision.
+Timestamps are added timezone information and interpreted as UNIX time in nanoseconds.
 
 ### Removal of invalid observations
 
@@ -158,10 +162,7 @@ Text-based attributes are normalized to ensure consistent formatting:
 
 - Leading and trailing whitespace is removed.
 - All string values are converted to uppercase.
-- Empty strings are replaced by explicit missing values.
-
-This normalization is applied in particular to aircraft identifiers and callsigns,
-which are frequently affected by formatting inconsistencies.
+- Callsign values that are set to empty strings are replaced by explicit missing values.
 
 ### Temporal ordering
 

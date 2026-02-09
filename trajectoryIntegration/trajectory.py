@@ -44,10 +44,10 @@ class Trajectory():
     aerodromeOfDeparture : str
     aerodromeOfDestination : str
     date : datetime.date
-    plannedDeparture : datetime.timestamp
-    plannedArrival : datetime.timestamp
-    actualDeparture : datetime.timestamp
-    actualArrival : datetime.timestamp
+    estimatedTakeOffTime : datetime.timestamp
+    estimatedTimeOfArrival : datetime.timestamp
+    actualTakeOffTime : datetime.timestamp
+    actualTimeOfArrival : datetime.timestamp
     ts_start : datetime.timestamp
     ts_end : datetime.timestamp
     airline : str
@@ -56,20 +56,41 @@ class Trajectory():
     vectors : pd.DataFrame
     # raw_vectors: pd.DataFrame = vectors.copy()
 
+    attrs = [
+        'ifplId',
+        'callsign',
+        'icao24',
+        'aerodromeOfDeparture',
+        'aerodromeOfDestination',
+        'date',
+        'estimatedTakeOffTime',
+        'estimatedTimeOfArrival',
+        'actualTakeOffTime',
+        'actualTimeOfArrival',
+        'ts_start',
+        'ts_end',
+        'airline',
+        'data_source_surveillance',
+        'data_source_flights',
+    ]
+
 
     def __init__(self, trajectoryId, date, state='raw', demo_folder=None):
         if state == 'raw':
-            folder = NM_TRAJECTORIES_RAW_PATH
+            folder = NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}'
         elif state == 'clean':
-            folder = NM_TRAJECTORIES_PATH
+            folder = NM_TRAJECTORIES_PATH / f'flightDate={date}'
         elif state == 'demo':
             folder = Path(demo_folder)
 
-        self.vectors = pd.read_parquet(folder /  f'tray.{date}.parquet',
+        self.vectors = pd.read_parquet(folder /  f'vectors.{date}.parquet',
                                     engine='pyarrow', dtype_backend='pyarrow',
                                     filters=[('ifplId', '==', trajectoryId)])
-        with open(folder / f'flightDate={date}' /f'tray.{trajectoryId}.json', 'r', encoding='utf8') as file:
-            metadata = json.load(file)
+        
+        metadata = pd.read_parquet(folder /  f'flights.{date}.parquet', 
+                                 engine='pyarrow', dtype_backend='pyarrow',
+                                 filters=[('ifplId', '==', trajectoryId)]).iloc[0].to_dict()
+
         for k, v in metadata.items():
             setattr(self, k, v)
         self.state = state
@@ -120,6 +141,7 @@ class Trajectory():
         # TODO
 
     def save(self):
+        # TODO: Adapt to using parquet instead of individual jsons
         folder = NM_TRAJECTORIES_RAW_PATH / f'flightDate={self.date}'
         with open(folder / f'tray.{self.ifplId}.json', 'r', encoding='utf8') as file:
             old_metadata = json.load(file)
@@ -129,7 +151,7 @@ class Trajectory():
 
         folder = NM_TRAJECTORIES_PATH / f'flightDate={self.date}'
         if not folder.exists(): folder.mkdir(parents=True)
-        with open(folder / f'tray.{self.ifplId}.json', 'w+', encoding='utf8') as file:
+        with open(folder / f'flights.{self.ifplId}.parquet', 'w+', encoding='utf8') as file:
             json.dump(metadata, file, indent=2, default=utils.custom_json_encoder)
 
         if self.save_single_tray:

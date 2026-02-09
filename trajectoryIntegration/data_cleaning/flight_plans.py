@@ -143,11 +143,12 @@ def nm_fplan_process(date: str) -> None:
     """
 
     input_file = paths.NM_JSON_FPLAN_PATH / f'flightDate={date}' / f'flightDate={date}.json'
+    
     with open(input_file, 'r', encoding='utf8') as file:
-        data = [json.loads(x) for x in file]
-    fplan = nm_fplan_normalize_schema(data)
-    del data
+        data = (json.loads(x) for x in file)
+        fplan = nm_fplan_normalize_schema(data)
     fplan = nm_fplan_clean(fplan)
+    
     output_dir = paths.NM_PARQUET_FPLAN_PATH
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -166,37 +167,9 @@ def nm_fdata_process(date: str) -> None:
     """
 
     data = []
-    file_list = list((paths.NM_JSON_FDATA_PATH / f'flightDate={date}').glob('*.json'))
-    max_workers=os.cpu_count()
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        for file_path in tqdm(file_list, desc=f'{date} FDATA   | Clean  ', ncols=125):
-            with open(file_path, 'r', encoding='utf8') as file:
-                chunk = [json.loads(x) for x in file]
-            chunk = nm_fdata_normalize_schema(chunk)
-            chunk = nm_fdata_clean(chunk)
-            data.append(chunk)
-        fdata = pd.concat(data)
-        del data
-    output_dir = paths.NM_PARQUET_FDATA_PATH
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
-    output_file = output_dir / f'nm.fdata.{date}.parquet'
-    fdata.to_parquet(output_file, index=False)
-
-def nm_fdata_process(date: str) -> None:
-    """
-    Process NM Flight Data (FDATA) messages for a given date into L1 parquet files.
-
-    Messages are ordered by flight data version number, normalized and cleaned to
-    produce a consolidated snapshot per flight plan.
-
-    Args:
-        date: String with a date in format 'YYYY-MM-DD'
-    """
-
-    data = []
-    file_list = list((paths.NM_JSON_FDATA_PATH / f'flightDate={date}').glob('*.json'))
-    for file_path in tqdm(file_list, desc=f'{date} FDATA   | Clean  ', ncols=125):
+    input_files = list((paths.NM_JSON_FDATA_PATH / f'flightDate={date}').glob('*.json'))
+    for file_path in tqdm(input_files, desc=f'{date} FDATA   | Clean  ', ncols=125):
+        # Processed in chunks to reduce memory consumption
         buffer = []
         with open(file_path, 'r', encoding='utf8') as file:
             for line in file:
@@ -211,7 +184,8 @@ def nm_fdata_process(date: str) -> None:
                 chunk = nm_fdata_clean(chunk)
                 data.append(chunk)
     fdata = pd.concat(data)
-    del data
+    del data, buffer, chunk
+    
     output_dir = paths.NM_PARQUET_FDATA_PATH
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -219,6 +193,7 @@ def nm_fdata_process(date: str) -> None:
     fdata.to_parquet(output_file, index=False)
 
 def _parallelize_nm_fdata_process(str):
+    # TODO
     pass
 
 def nm_fplan_normalize_schema(data: list[dict]) -> pd.DataFrame:
@@ -232,8 +207,9 @@ def nm_fplan_normalize_schema(data: list[dict]) -> pd.DataFrame:
 
     data = flatten_dict(data, NAME_MAPPING_FPLAN.keys())
     column_names = NAME_MAPPING_FPLAN.values()
-    fplan = pd.DataFrame(data, columns=column_names)
+    fplan = pd.DataFrame(data, columns=column_names, )
     del data
+
     # Change data types
     fplan['timestamp'] = convert_time_column(fplan.timestamp)
     fplan['estimatedOffBlockTime'] = convert_time_column(fplan.estimatedOffBlockTime)
@@ -258,6 +234,7 @@ def nm_fdata_normalize_schema(data: list[dict]) -> pd.DataFrame:
     column_names = NAME_MAPPING_FDATA.values()
     fdata = pd.DataFrame(data, columns = column_names)
     del data
+
     # Change data types
     fdata['routeLength'] = fdata.routeLength.astype('Int32[pyarrow]')
     fdata['flightDataVersionNr'] = fdata.flightDataVersionNr.astype('Int32[pyarrow]')
@@ -279,7 +256,7 @@ def nm_fdata_normalize_schema(data: list[dict]) -> pd.DataFrame:
     return fdata
 
 def nm_fplan_clean(fplan: pd.DataFrame) -> pd.DataFrame:
-    # Remove duplicates
+    # Remove duplicates - all attributes except uuid
     dups_columns = fplan.columns.difference(['uuid'])
     fplan = fplan.drop_duplicates(subset=dups_columns)
 
@@ -355,18 +332,18 @@ def opensky_flights_json_to_parquet(date: str) -> None:
     Args:
         date: String with a date in format 'YYYY-MM-DD'
     """
-    # TODO: Revisar
+    # TODO: Align to process/normalize/clean structure
     date_dt = datetime.datetime.strptime(date, '%Y-%m-%d')
     date_prev_dt = date_dt - datetime.timedelta(days=1)
     date_prev = date_prev_dt.strftime('%Y-%m-%d')
 
-    file_paths = []
+    input_files = []
     if (paths.OPENSKY_RAW_FLIGHTS_PATH / f'flightDate={date_prev}').exists():
-        file_paths += list(paths.OPENSKY_RAW_FLIGHTS_PATH.glob(f'flightDate={date_prev}/*.json'))
-    file_paths += list(paths.OPENSKY_RAW_FLIGHTS_PATH.glob(f'flightDate={date}/*.json'))
+        input_files += list(paths.OPENSKY_RAW_FLIGHTS_PATH.glob(f'flightDate={date_prev}/*.json'))
+    input_files += list(paths.OPENSKY_RAW_FLIGHTS_PATH.glob(f'flightDate={date}/*.json'))
 
     data = []
-    for file_path in file_paths:
+    for file_path in input_files:
         chunk_df = pd.read_json(file_path)
         data.append(chunk_df)
     data = pd.concat(data)

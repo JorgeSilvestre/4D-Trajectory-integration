@@ -81,6 +81,7 @@ def opensky_vectors_process(date: str) -> None:
     output_dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
+    
     # Parallel
     max_workers = os.cpu_count()
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -92,8 +93,8 @@ def opensky_vectors_process(date: str) -> None:
                 (data.iloc[i*step:(i+1)*step] for i in range(4*max_workers+1)),
                 chunksize=1, buffersize=max_workers))
             data = pd.concat(sorted_chunks, axis=0)
-
             data.to_parquet(output_dir / file_path.name, index=False)
+    
     # Sequential
     # for file_path in tqdm(input_files, desc=f'{date} VECTORS | Clean  ', ncols=125, disable=False):
         # data = opensky_vectors_normalize_schema(data)
@@ -128,8 +129,9 @@ def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     data = data.rename(columns=NAME_MAPPING_OPENSKY)
 
     # Data types
-    data['icao24'] = data.icao24.astype('string[pyarrow]')
-    data['callsign'] = data.callsign.astype('string[pyarrow]')
+    # Most attributes are already ingested from ADAPT in appropriate data types
+    # data['icao24'] = data.icao24.astype('string[pyarrow]')
+    # data['callsign'] = data.callsign.astype('string[pyarrow]')
     data['squawk'] = data.squawk.astype('string[pyarrow]')
 
     data['longitude'] = data.longitude.astype('Float32[pyarrow]')
@@ -139,6 +141,8 @@ def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     data['true_track'] = data.true_track.astype('Float32[pyarrow]')
     data['velocity'] = data.velocity.astype('Float32[pyarrow]')
     data['vertical_rate'] = data.vertical_rate.astype('Float32[pyarrow]')
+
+    # data['on_ground'] = data.on_ground.astype('bool[pyarrow]')
 
     # The provided timestamps were converted to nanoseconds since epoch. They are converted to
     # time-zone aware objects.
@@ -152,8 +156,6 @@ def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
                                 format='%Y-%m-%d %H:%M:%S',
                                 unit='s', cache=True
                             ).dt.tz_localize(pytz.utc)
-
-    data['on_ground'] = data.on_ground.astype('Boolean[pyarrow]')
 
     return data
 
@@ -194,6 +196,8 @@ def opensky_vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
 
     # Clean trailing spaces in callsign
     data['callsign'] = data.callsign.str.strip(' ')
+    # Drop callsigns with blanks (not commercial flights)
+    data = data[~data.callsign.str.contains(' ')]
 
     # Format
     data['icao24'] = data.icao24.str.upper()
@@ -219,19 +223,21 @@ def opensky_vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
 
     return data
 
-
+# Deprecated
 # OpenSky vectors are already in parquet format
-# TODO: Actualizar
 def vectors_json_to_parquet(date: str) -> None:
     """Parse OpenSky state vectors from a JSON file and write into a parquet file
 
     Args:
         date: String with a date in format 'YYYY-MM-DD'
     """
-     # 'category'
-    file_paths = paths.OPENSKY_RAW_VECTORS_JSON_PATH.glob(f'flightDate={date}/*.json')
+    
+    input_files = list(paths.OPENSKY_RAW_VECTORS_JSON_PATH.glob(f'flightDate={date}/*.json'))
+    output_dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
 
-    for file_path in list(file_paths):
+    for file_path in input_files:
         data = []
         with open(file_path, 'r', encoding='utf8') as file:
             # One-shot
@@ -242,7 +248,8 @@ def vectors_json_to_parquet(date: str) -> None:
             chunks = []
             for line in tqdm(file, desc=f'{date} VECTORS', ncols=125):
                 record = json.loads(line)
-                chunk = pd.DataFrame(record['states'], columns=params.vector_attribute_names)
+                chunk = pd.DataFrame(record['states'], 
+                                     columns=params.vector_attribute_names)
                 chunk['timestamp'] = record['time']
                 chunks.append(chunk)
             chunks_df = pd.concat(chunks)
@@ -251,8 +258,4 @@ def vectors_json_to_parquet(date: str) -> None:
 
         # Clean vectors
         data = vectors_clean(data)
-
-        folder = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
-        if not folder.exists():
-            folder.mkdir(parents=True)
-        data.to_parquet(folder / f'{file_path.stem}.parquet', index=False)
+        data.to_parquet(output_dir / f'{file_path.stem}.parquet', index=False)

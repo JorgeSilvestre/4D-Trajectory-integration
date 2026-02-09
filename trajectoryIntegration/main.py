@@ -19,7 +19,7 @@ def run():
     month = '2023-07'
 
     # Integration process
-    if False:
+    if True:
         # L1
         # clean_additional.ourairports_airports_process()
 
@@ -48,13 +48,13 @@ def run():
         # trajectory_metrics.calculate_metrics_trajectories(date, 'raw')
 
         # L3
-        # process_trajectories(date)
+        process_trajectories(date)
         # trajectory_metrics.calculate_metrics_trajectories(date, 'clean')
-        integrate_taf.taf_integrate_vectors(date)
+        # integrate_taf.taf_integrate_vectors(date)
         pass
 
     # Sort trajectory
-    if True:
+    if False:
         # AT02603204
         tray = Trajectory('AT02603928', '2023-07-03', 'raw')
         res = process_trajectory(tray, 'complete', params.SORT_ALG, False, {}, True, False)

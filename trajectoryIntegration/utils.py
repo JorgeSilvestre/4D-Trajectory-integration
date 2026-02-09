@@ -4,6 +4,7 @@ import json
 import bson
 import numpy as np
 import pandas as pd
+from pyarrow.types import is_decimal
 
 # LEMD_LATITUDE = 40.49
 # LEMD_LONGITUDE = -3.585
@@ -112,6 +113,8 @@ def custom_json_encoder(obj) -> str:
         return str(obj)
     if pd.isna(obj):
         return None
+    if is_decimal(obj):
+        return float(obj)
     raise TypeError("Type not serializable")
 
 # FIXME: Borrar

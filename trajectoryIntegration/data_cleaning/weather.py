@@ -71,8 +71,10 @@ def taf_forecast_process(month: str) -> None:
         month: String with a month in format 'YYYY-MM'
     """
 
-    folder = paths.TAF_RAW_PATH / f'month={month}'
-    data = pd.read_parquet(folder, engine='pyarrow', dtype_backend='pyarrow')
+    input_dir = paths.TAF_RAW_PATH / f'month={month}'
+
+    data = pd.read_parquet(input_dir, engine='pyarrow', dtype_backend='pyarrow')
+
     # Parallelized
     max_workers = os.cpu_count()
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -82,15 +84,16 @@ def taf_forecast_process(month: str) -> None:
             (data.iloc[i*step:(i+1)*step] for i in range(4*max_workers+1)),
             chunksize=1, buffersize=max_workers))
     data = pd.concat(sorted_chunks, axis=0)
+    del sorted_chunks
 
     # Sequential
     # data = taf_forecast_normalize_schema(data)
     # data = taf_forecast_clean(data)
 
-    output_folder = paths.TAF_PARQUET_PATH
-    if not output_folder.exists():
-        output_folder.mkdir(parents=True)
-    output_file = output_folder / f'taf.{month}.parquet'
+    output_dir = paths.TAF_PARQUET_PATH
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
+    output_file = output_dir / f'taf.{month}.parquet'
     data.to_parquet(output_file, index=False)
 
 def _parallelize_process(data: pd.DataFrame):
@@ -113,10 +116,6 @@ def taf_forecast_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     data['change_indicator'] = data.change_indicator.astype('string[pyarrow]')
     data['wx_string'] = data.wx_string.astype('string[pyarrow]')
 
-    # data[['issue_time','valid_time_from','valid_time_to','time_from','time_to',]] = (
-    #     data[['issue_time','valid_time_from','valid_time_to','time_from','time_to',]].dt.tz_localize(pytz.utc)
-    # )
-    tz = pytz.timezone('Europe/Madrid')
     data['issue_time'] = data.issue_time.dt.tz_localize(pytz.utc)
     data['valid_time_from'] = data.valid_time_from.dt.tz_localize(pytz.utc)
     data['valid_time_to'] = data.valid_time_to.dt.tz_localize(pytz.utc)

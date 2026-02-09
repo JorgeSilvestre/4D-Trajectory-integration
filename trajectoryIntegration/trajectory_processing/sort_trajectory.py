@@ -13,8 +13,8 @@ from .sorting_algorithms import haversine_distance, path_length
 
 
 def process_trajectories(date: str) -> None:
-    tray_ids = (paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}').glob('*.json')
-    tray_ids = [str(x).split('.')[1] for x in tray_ids]
+    file_path = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}' / f'flights.{date}.parquet'
+    tray_ids = pd.read_parquet(file_path, columns=['ifplId'], engine='pyarrow').ifplId.to_list()
     trays = (Trajectory(x, date) for x in tray_ids)
 
     # Parallelized
@@ -28,13 +28,18 @@ def process_trajectories(date: str) -> None:
     # for tray in tqdm(trays, total=len(tray_ids), ncols=125, leave=True):
     #     result.append(_process_trajectory_params(tray))
 
-    result = [t.vectors for t in result]
-    result = pd.concat(result)
-
-    folder = paths.NM_TRAJECTORIES_PATH
-    if len(result)>0:
-        path = folder / f'tray.{date}.parquet'
-        result.to_parquet(path, index=False,)
+    # Write updated metadata
+    vectors = [t.vectors for t in result]
+    vectors = pd.concat(vectors)
+    folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={date}'
+    if not folder.exists():
+        folder.mkdir(parents=True)
+    path = folder / f'vectors.{date}.parquet'
+    vectors.to_parquet(path, index=False,)
+    path = folder / f'flights.{date}.parquet'
+    metadata = [{x:getattr(t, x) for x in Trajectory.attrs} for t in result]
+    metadata = pd.DataFrame(metadata)
+    metadata.to_parquet(path, index=False,)
 
 def _process_trajectory_params(trajectory: Trajectory) -> Trajectory:
     trajectory = process_trajectory(
@@ -42,20 +47,19 @@ def _process_trajectory_params(trajectory: Trajectory) -> Trajectory:
         mode=params.HOW_SORT,
         algorithm=params.SORT_ALG,
         presort=params.PRESORT_ALG,
-        check_loop=params.DETECT_LOOP,
-        log=True)
+        check_loop=params.DETECT_LOOP)
 
     return trajectory
 
 def process_trajectory(trajectory: Trajectory, mode, algorithm, presort,
-                       presort_algs={}, check_loop=True, log=False) -> Trajectory:
-    trajectory = sort_trajectory(trajectory=trajectory,
-                                mode=mode,
-                                algorithm=algorithm,
-                                presort=presort,
-                                presort_algs=presort_algs,
-                                check_loop=check_loop,
-                                log=log)
+                       presort_algs={}, check_loop=True) -> Trajectory:
+    trajectory = sort_trajectory(
+        trajectory=trajectory,
+        mode=mode,
+        algorithm=algorithm,
+        presort=presort,
+        presort_algs=presort_algs,
+        check_loop=check_loop)
     trajectory = identify_moved_vectors(trajectory)
     trajectory = recalculate_timestamp(trajectory)
     trajectory = fix_altitude(trajectory)
@@ -64,12 +68,18 @@ def process_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     # cleanup
     # trajectory.vectors.drop(['distance_org', 'distance_dst'], axis=1, inplace=True)
     trajectory.trajectory_status = 'L3_sorted'
-    trajectory.save()
+    # trajectory.save()
+
+    folder = paths.SORT_TRAJECTORIES_METRICS_PATH
+    if not folder.exists():
+        folder.mkdir(parents=True)
+    with open(folder / f'sortTray.{trajectory.date}.{trajectory.ifplId}.json', 'w+', encoding='utf8') as file:
+        json.dump(trajectory.sorting_metrics, file, indent=2)
 
     return trajectory
 
 def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
-                       presort_algs={}, check_loop=True, log=False) -> Trajectory:
+                       presort_algs={}, check_loop=True) -> Trajectory:
     airports = pd.read_parquet(paths.AIRPORTS_PATH)
 
     ### Metrics ###############################################################
@@ -183,13 +193,6 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     # print results
     # print(metrics["initial_distance"], 'Mi ->', metrics["final_distance"], 
     #       f'Mi (-{((metrics["initial_distance"]-metrics["final_distance"])/metrics["initial_distance"]):.2%})')
-
-    if log:
-        folder = paths.SORT_TRAJECTORIES_METRICS_PATH
-        if not folder.exists():
-            folder.mkdir(parents=True)
-        with open(folder / f'sortTray.{trajectory.date}.{trajectory.ifplId}.json', 'w+', encoding='utf8') as file:
-            json.dump(metrics, file, indent=2)
 
     trajectory.sorting_metrics = metrics
     return trajectory

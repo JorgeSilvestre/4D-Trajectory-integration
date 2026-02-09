@@ -1,4 +1,5 @@
 import pandas as pd
+import pyarrow as pa
 
 from .. import params, paths
 from ..trajectory import Trajectory
@@ -7,7 +8,7 @@ from ..utils import haversine_np, haversine_np_track
 # airports = pd.read_parquet(paths.AIRPORTS_PATH)
 
 def outliers_median_filter(data: pd.Series, window, thresh) -> pd.Series:
-    filled_sequence = data.interpolate(method='slinear', limit_area='inside')
+    filled_sequence = data.astype('float32[pyarrow]').interpolate(method='slinear', limit_area='inside')
     median_values = data.rolling(window, min_periods=5, center=True, closed='both').median()
     result = (filled_sequence - median_values).abs() > thresh
 
@@ -37,9 +38,9 @@ def fix_altitude(trajectory: Trajectory):
     )
     interp_values = data.set_index('timestamp').altitude.copy()
     interp_values[incorrect_altitude.to_numpy()] = pd.NA
-    interp_values = interp_values.interpolate(method='index', limit = 5, limit_area='inside').reset_index(drop=True)
+    interp_values = interp_values.astype('float32[pyarrow]').interpolate(method='index', limit = 5, limit_area='inside').reset_index(drop=True)
 
-    data['altitude'] = interp_values
+    data['altitude'] = interp_values.astype(pd.ArrowDtype(pa.decimal128(6, 0)))
     data['incorrect_altitude'] = incorrect_altitude
 
     trajectory.vectors = data
@@ -47,6 +48,7 @@ def fix_altitude(trajectory: Trajectory):
 
 
 def fix_altitude2(trajectory: Trajectory) -> pd.DataFrame:
+    # TODO: Use "within continuous segment" logic and delete this method
     df = trajectory.vectors.copy()
 
     origin_airport = airports[airports.icao == trajectory.aerodromeOfDeparture].iloc[0]

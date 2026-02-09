@@ -55,7 +55,7 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
         ).total_seconds())
     # results['missing_taxi_start'] = bool(data[(data['distance_to_origin'] < AIRPORT_AREA) & data.on_ground])
     # results['missing_taxi_end'] = bool(data[(data['distance_to_destination'] < AIRPORT_AREA) & data.on_ground])
-    results['last_altitude_before_ground'] = data.loc[data[~data.on_ground].timestamp.idxmax()].altitude
+    results['last_altitude_before_ground'] = float(data.loc[data[~data.on_ground].dropna(subset=['altitude']).timestamp.idxmax()].altitude)
 
     ## Coverage and density
     results['density'] = results['num_vectors']/results['distance']

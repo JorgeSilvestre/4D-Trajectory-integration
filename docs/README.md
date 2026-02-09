@@ -24,6 +24,11 @@
 
 ## Workflow implementation
 
+<figure align="center" >
+<img src="assets/data_workflow_overview.png" width="600"  alt="">
+<figcaption>Overview of the data workflow.</figcaption>
+</figure>
+
 - [Directory organization](./pipeline/folder_structure.md)
 - [Cleaning pipeline](./pipeline/cleaning.md)
 - [Integration pipeline](./pipeline/integration.md)

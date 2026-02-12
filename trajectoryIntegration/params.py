@@ -36,9 +36,10 @@ DIFF_ALTITUDE_THRESHOLD = 250  # Feet
 ALTITUDE_CHECK_WINDOW_SIZE = 7
 
 # SORTING CONFIGURATION ----------------------------------------------------------------------------
+OPT_MAX_ITERATIONS = 1000
 
 # Trajectory sorting configurations
-HOW_SORT = 'complete' # 'segmented'
+HOW_SORT = 'segmented' # 'complete'
 DETECT_LOOP = True
 SORT_ALG = {
     'complete': {
@@ -51,7 +52,7 @@ SORT_ALG = {
         },
     },
     'out': {
-        'algorithm': opt2,
+        'algorithm': opt2_restricted,
         'options': {
             'distance_function': 'haversine',
         },
@@ -63,7 +64,7 @@ SORT_ALG = {
         },
     },
     'in': {
-        'algorithm': opt2,
+        'algorithm': opt2_restricted,
         'options': {
             'distance_function': 'haversine',
         },

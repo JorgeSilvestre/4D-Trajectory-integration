@@ -6,9 +6,9 @@ At this level, each data source is processed **independently**, transforming raw
 
 Details about the structure, semantics and known issues of each raw data source are documented separately under `docs/raw_data/`.
 
-<figure align="center" >
-<img src="../assets/cleaning_pipeline.png" width="600"  alt="">
-<figcaption>Overview of the cleaning pipeline.</figcaption>
+<figure><p align="center">
+<img src="../assets/cleaning_pipeline.png" width="600"  alt=""></p>
+<figcaption><p align="center">Overview of the cleaning pipeline.</p></figcaption>
 </figure>
 
 ---

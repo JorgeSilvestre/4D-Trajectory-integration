@@ -81,7 +81,7 @@ def opensky_vectors_process(date: str) -> None:
     output_dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
-    
+
     # Parallel
     max_workers = os.cpu_count()
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -89,19 +89,20 @@ def opensky_vectors_process(date: str) -> None:
             data = pd.read_parquet(file_path, engine='pyarrow', dtype_backend='pyarrow')
             step = len(data) // (4*max_workers)
             sorted_chunks = list(executor.map(
-                _parallelize_process,
+                _parallelize_opensky_vectors_process,
                 (data.iloc[i*step:(i+1)*step] for i in range(4*max_workers+1)),
                 chunksize=1, buffersize=max_workers))
             data = pd.concat(sorted_chunks, axis=0)
             data.to_parquet(output_dir / file_path.name, index=False)
-    
+
     # Sequential
     # for file_path in tqdm(input_files, desc=f'{date} VECTORS | Clean  ', ncols=125, disable=False):
-        # data = opensky_vectors_normalize_schema(data)
-        # data = opensky_vectors_clean(data)
-        # data.to_parquet(output_dir / file_path.name, index=False)
+    #     data = pd.read_parquet(file_path, engine='pyarrow', dtype_backend='pyarrow')
+    #     data = opensky_vectors_normalize_schema(data)
+    #     data = opensky_vectors_clean(data)
+    #     data.to_parquet(output_dir / file_path.name, index=False)
 
-def _parallelize_process(data: pd.DataFrame):
+def _parallelize_opensky_vectors_process(data: pd.DataFrame) -> pd.DataFrame:
     return opensky_vectors_clean(opensky_vectors_normalize_schema(data))
 
 def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
@@ -129,33 +130,25 @@ def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     data = data.rename(columns=NAME_MAPPING_OPENSKY)
 
     # Data types
-    # Most attributes are already ingested from ADAPT in appropriate data types
+    # Many attributes are already ingested from ADAPT in appropriate data types
     # data['icao24'] = data.icao24.astype('string[pyarrow]')
     # data['callsign'] = data.callsign.astype('string[pyarrow]')
     data['squawk'] = data.squawk.astype('string[pyarrow]')
 
-    data['longitude'] = data.longitude.astype('Float32[pyarrow]')
-    data['latitude'] = data.latitude.astype('Float32[pyarrow]')
-    data['baro_altitude'] = data.baro_altitude.astype('Float32[pyarrow]')
-    data['geo_altitude'] = data.geo_altitude.astype('Float32[pyarrow]')
-    data['true_track'] = data.true_track.astype('Float32[pyarrow]')
-    data['velocity'] = data.velocity.astype('Float32[pyarrow]')
-    data['vertical_rate'] = data.vertical_rate.astype('Float32[pyarrow]')
+    # data['longitude'] = data.longitude.astype('Float32[pyarrow]')
+    # data['latitude'] = data.latitude.astype('Float32[pyarrow]')
+    # data['baro_altitude'] = data.baro_altitude.astype('Float32[pyarrow]')
+    # data['geo_altitude'] = data.geo_altitude.astype('Float32[pyarrow]')
+    # data['true_track'] = data.true_track.astype('Float32[pyarrow]')
+    # data['velocity'] = data.velocity.astype('Float32[pyarrow]')
+    # data['vertical_rate'] = data.vertical_rate.astype('Float32[pyarrow]')
 
     # data['on_ground'] = data.on_ground.astype('bool[pyarrow]')
 
     # The provided timestamps were converted to nanoseconds since epoch. They are converted to
     # time-zone aware objects.
-    data['time_position'] = pd.to_datetime(
-                                data.time_position.sort_values(),
-                                format='%Y-%m-%d %H:%M:%S',
-                                unit='s', cache=True
-                            ).dt.tz_localize(pytz.utc)
-    data['last_contact'] = pd.to_datetime(
-                                data.last_contact.sort_values(),
-                                format='%Y-%m-%d %H:%M:%S',
-                                unit='s', cache=True
-                            ).dt.tz_localize(pytz.utc)
+    data['time_position'] = data.time_position.dt.tz_localize(pytz.UTC).dt.as_unit('s')
+    data['last_contact'] = data.last_contact.dt.tz_localize(pytz.UTC).dt.as_unit('s')
 
     return data
 
@@ -189,7 +182,7 @@ def opensky_vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
         data['icao24'].notna() &
         data['longitude'].between(-180, 180) &
         data['latitude'].between(-90, 90)
-    ].copy()
+    ]
 
     # Remove duplicated state vectors caused by repeated position reports
     data = data.drop_duplicates(subset=['icao24','time_position','latitude','longitude'])
@@ -216,7 +209,7 @@ def opensky_vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
     data['altitude'] = data.geo_altitude.copy()
 
     # Unique ID
-    # data['vectorId'] = date.replace('-','') + '-' + data.icao24 + '-' + data.timestamp.astype(str)
+    # data['vectorId'] = data.flightDate.replace('-','') + '-' + data.icao24 + '-' + data.timestamp.dt.total_seconds()
 
     # Sort columns
     data = data[VECTOR_ATTRIBUTE_NAMES]
@@ -231,7 +224,7 @@ def vectors_json_to_parquet(date: str) -> None:
     Args:
         date: String with a date in format 'YYYY-MM-DD'
     """
-    
+
     input_files = list(paths.OPENSKY_RAW_VECTORS_JSON_PATH.glob(f'flightDate={date}/*.json'))
     output_dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
     if not output_dir.exists():
@@ -248,7 +241,7 @@ def vectors_json_to_parquet(date: str) -> None:
             chunks = []
             for line in tqdm(file, desc=f'{date} VECTORS', ncols=125):
                 record = json.loads(line)
-                chunk = pd.DataFrame(record['states'], 
+                chunk = pd.DataFrame(record['states'],
                                      columns=params.vector_attribute_names)
                 chunk['timestamp'] = record['time']
                 chunks.append(chunk)

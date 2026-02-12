@@ -1,12 +1,15 @@
-from .data_cleaning import surveillance, flight_plans, weather
-from .data_cleaning import additional as clean_additional
-from .data_extraction import additional as extract_additional
-from .quality_metrics import individual_metrics, trajectory_metrics
-from .data_integration import integrate_nm_vectors, integrate_taf
 import time
-from .trajectory import Trajectory
-from .trajectory_processing.sort_trajectory import process_trajectory, process_trajectories
+
 from . import params
+from .data_cleaning import additional as clean_additional
+from .data_cleaning import flight_plans, surveillance, weather
+from .data_extraction import additional as extract_additional
+from .data_integration import integrate_nm_vectors, integrate_taf
+from .quality_metrics import individual_metrics, trajectory_metrics
+from .trajectory import Trajectory
+from .trajectory_processing.sort_trajectory import (process_trajectories,
+                                                    process_trajectory)
+
 
 def run():
     # date_start, date_end = '2023-07-01','2023-07-16'
@@ -20,6 +23,9 @@ def run():
 
     # Integration process
     if True:
+        airport_orig = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
+        airport_dest = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
+
         # L1
         # clean_additional.ourairports_airports_process()
 
@@ -32,20 +38,19 @@ def run():
         # individual_metrics.calculate_metrics_taf(month, 'clean')
 
         # individual_metrics.calculate_metrics_fplan(date, 'raw')
-        # flight_plans.nm_fplan_process(date)
-        # individual_metrics.calculate_metrics_fplan(date, 'clean')
         # individual_metrics.calculate_metrics_fdata(date, 'raw')
+        # flight_plans.nm_fplan_process(date)
         # flight_plans.nm_fdata_process(date)
+        # individual_metrics.calculate_metrics_fplan(date, 'clean')
         # individual_metrics.calculate_metrics_fdata(date, 'clean')
 
         # L2
-        airport_orig = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
-        airport_dest = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
 
-        # integrate_taf.taf_current_report(month)
         # integrate_nm_vectors.nm_merge_fplan_fdata(date)
         # integrate_nm_vectors.nm_integrate_flight_vectors(date, airport_orig, airport_dest)
         # trajectory_metrics.calculate_metrics_trajectories(date, 'raw')
+
+        # integrate_taf.taf_current_report(month, set(airport_orig + airport_dest))
 
         # L3
         process_trajectories(date)

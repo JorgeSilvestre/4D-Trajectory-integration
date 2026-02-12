@@ -127,7 +127,7 @@ def convert_time_column(column: pd.Series) -> pd.Series:
         column = column.dt.tz_localize(pytz.timezone('Europe/Madrid'))
         column = column.dt.tz_convert(pytz.utc)
 
-    return column #.astype('int64[pyarrow]')
+    return column.dt.as_unit('s')
 
 ### FLIGHT PLANS ----------------------------------------------------------------------------------
 def nm_fplan_process(date: str) -> None:
@@ -143,12 +143,12 @@ def nm_fplan_process(date: str) -> None:
     """
 
     input_file = paths.NM_JSON_FPLAN_PATH / f'flightDate={date}' / f'flightDate={date}.json'
-    
+
     with open(input_file, 'r', encoding='utf8') as file:
         data = (json.loads(x) for x in file)
         fplan = nm_fplan_normalize_schema(data)
     fplan = nm_fplan_clean(fplan)
-    
+
     output_dir = paths.NM_PARQUET_FPLAN_PATH
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -185,7 +185,7 @@ def nm_fdata_process(date: str) -> None:
                 data.append(chunk)
     fdata = pd.concat(data)
     del data, buffer, chunk
-    
+
     output_dir = paths.NM_PARQUET_FDATA_PATH
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -268,6 +268,8 @@ def nm_fplan_clean(fplan: pd.DataFrame) -> pd.DataFrame:
     fplan['callsign'] = fplan.callsign.str.upper().str.strip()
     fplan['aerodromeOfDeparture'] = fplan.aerodromeOfDeparture.str.strip()
     fplan['aerodromeOfDestination'] = fplan.aerodromeOfDestination.str.strip()
+    fplan['operator'] = fplan.operator.str.strip()
+    fplan['operatingOperator'] = fplan.operatingOperator.str.strip()
     # Expected format: HHMM (NM specification)
     fplan['totalEstimatedElapsedTime'] = fplan.totalEstimatedElapsedTime.apply(
         lambda x: (int(x[:2])*60+int(x[2:])) if not pd.isna(x) else x
@@ -300,6 +302,8 @@ def nm_fdata_clean(fdata: pd.DataFrame) -> pd.DataFrame:
     fdata['callsign'] = fdata.callsign.str.upper().str.strip()
     fdata['aerodromeOfDeparture'] = fdata.aerodromeOfDeparture.str.strip()
     fdata['aerodromeOfDestination'] = fdata.aerodromeOfDestination.str.strip()
+    fdata['operator'] = fdata.operator.str.strip()
+    fdata['operatingOperator'] = fdata.operatingOperator.str.strip()
 
     # Fill ICAO24 of the last version of flight data
     fdata['ifplId_group'] = fdata.ifplId.copy()
@@ -309,7 +313,7 @@ def nm_fdata_clean(fdata: pd.DataFrame) -> pd.DataFrame:
     fdata = fdata.drop('ifplId_group', axis=1)
 
     # Final clean
-    fdata = fdata.drop_duplicates(keep='last').reset_index(drop=True)
+    fdata = fdata.drop_duplicates(subset=dups_columns, keep='last').reset_index(drop=True)
 
     return fdata
 

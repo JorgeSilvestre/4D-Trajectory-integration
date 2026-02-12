@@ -1,40 +1,49 @@
-import datetime
 import json
+import os
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from .. import params, paths, utils
+from ..trajectory import Trajectory
 from ..trajectory_processing import sorting_algorithms
 
 
 def calculate_metrics_trajectories(date: str, trayType: str = 'raw'):
     if trayType == 'raw':
-        folder = paths.NM_TRAJECTORIES_RAW_PATH
+        folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}'
     elif trayType == 'clean':
-        folder = paths.NM_TRAJECTORIES_PATH
-    ifplIds = pd.read_parquet(folder / f'tray.{date}.parquet', columns=['ifplId'],
-                              engine='pyarrow', dtype_backend='pyarrow', ).ifplId.drop_duplicates()
+        folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={date}'
+    traj_ids = pd.read_parquet(
+            folder / f'flights.{date}.parquet', columns=['ifplId'],
+            engine='pyarrow', dtype_backend='pyarrow',
+        ).ifplId.drop_duplicates()
+    trajectories = (Trajectory(x, date, trayType) for x in traj_ids)
 
-    for t_id in ifplIds.values:
-        calculate_metrics_trajectory(date, t_id, trayType)
+    # Sequential
+    # for trajectory in tqdm(trajectories, desc=f'{date} FDATA   | Metrics', ncols=125):
+    #     calculate_metrics_trajectory(trajectory)
 
-    # args = [(date, t_id, trayType) for t_id in ifplIds.values]
-    # with concurrent.futures.ThreadPoolExecutor(max_workers=7) as executor:
-    #     executor.map(lambda x: calculate_metrics_trajectory(*x), args, chunksize=100)
+    # Parallel
+    max_workers = os.cpu_count()
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        res = tqdm(executor.map(
+                    calculate_metrics_trajectory, trajectories,
+                    chunksize=10, buffersize=max_workers),
+                total=len(traj_ids), ncols=125, leave=True)
+        res = list(res)
 
-def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = 'raw'):
-    if trayType == 'raw':
-        folder = paths.NM_TRAJECTORIES_RAW_PATH
-    elif trayType == 'clean':
-        folder = paths.NM_TRAJECTORIES_PATH
-    data = pd.read_parquet(folder / f'tray.{date}.parquet', filters=[('ifplId', '==', trajectoryId)],
-                           engine='pyarrow', dtype_backend='pyarrow', )
-    with open(folder / f'flightDate={date}' / f'tray.{trajectoryId}.json', 'r', encoding='utf8') as file:
-        metadata = json.load(file)
+def calculate_metrics_trajectory(trajectory: Trajectory):
+    if trajectory.state == 'raw':
+        folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={trajectory.date}'
+    elif trajectory.state == 'clean':
+        folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={trajectory.date}'
+    data = trajectory.vectors
 
     results = {}
-    results['ifplId'] = trajectoryId
+    results['ifplId'] = trajectory.ifplId
     ## Generic
     completitude = data[['timestamp', 'latitude', 'longitude', 'baro_altitude', 'geo_altitude',
                          'callsign', 'vertical_rate', 'velocity', 'altitude', 'true_track']].notnull().sum()
@@ -44,15 +53,12 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
     results['distance'] = float(sorting_algorithms.path_length(data[['latitude', 'longitude']].to_numpy('float32')))
 
     ## Semantic
-    results['distance_to_origin'] = calculate_distance_to_airport(data, metadata['aerodromeOfDeparture'], where='origin')
-    results['distance_to_destination'] = float( calculate_distance_to_airport(data, metadata['aerodromeOfDestination'], where='destination'))
+    results['distance_to_origin'] = calculate_distance_to_airport(data,trajectory.aerodromeOfDeparture, where='origin')
+    results['distance_to_destination'] = float( calculate_distance_to_airport(data, trajectory.aerodromeOfDestination, where='destination'))
     results['missing_start'] = bool(results['distance_to_origin'] > params.THRESHOLD_DISTANCE_TO_AIRPORT)
     results['missing_end'] = bool(results['distance_to_destination'] > params.THRESHOLD_DISTANCE_TO_AIRPORT)
-    results['airports_distance'] = calculate_distance_airports(metadata['aerodromeOfDeparture'], metadata['aerodromeOfDeparture'])
-    results['effective_flight_time'] = int((
-        datetime.datetime.fromisoformat(metadata['actualTimeOfArrival']) -
-        datetime.datetime.fromisoformat(metadata['actualTakeOffTime'])
-        ).total_seconds())
+    results['airports_distance'] = calculate_distance_airports(trajectory.aerodromeOfDeparture, trajectory.aerodromeOfDestination)
+    results['effective_flight_time'] = int((trajectory.actualTimeOfArrival -trajectory.actualTakeOffTime).total_seconds())
     # results['missing_taxi_start'] = bool(data[(data['distance_to_origin'] < AIRPORT_AREA) & data.on_ground])
     # results['missing_taxi_end'] = bool(data[(data['distance_to_destination'] < AIRPORT_AREA) & data.on_ground])
     results['last_altitude_before_ground'] = float(data.loc[data[~data.on_ground].dropna(subset=['altitude']).timestamp.idxmax()].altitude)
@@ -89,21 +95,21 @@ def calculate_metrics_trajectory(date: str, trajectoryId: str, trayType: str = '
     if pd.isna(results['last_altitude_before_ground']):
         results['last_altitude_before_ground'] = None
 
-    if trayType == 'raw':
+    if trajectory.state == 'raw':
         if not paths.NM_TRAYS_METRICS_L2_PATH.exists():
             paths.NM_TRAYS_METRICS_L2_PATH.mkdir(parents=True)
-        with open(paths.NM_TRAYS_METRICS_L2_PATH / f'tray.{date}.{trajectoryId}.json', 'w+', encoding='utf8') as file:
+        with open(paths.NM_TRAYS_METRICS_L2_PATH / f'tray.{trajectory.date}.{trajectory.ifplId}.json', 'w+', encoding='utf8') as file:
             json.dump(results, file, indent=2, default=utils.custom_json_encoder)
             # try:
             # except TypeError:
             #     print(results)
             #     exit()
-    elif trayType == 'clean':
+    elif trajectory.state == 'clean':
         results['sorted_vectors'] = get_resorted_vectors(data)
         results['timestamp_variation'] = get_timestamp_variation(data)
         if not paths.NM_TRAYS_METRICS_L3_PATH.exists():
             paths.NM_TRAYS_METRICS_L3_PATH.mkdir(parents=True)
-        with open(paths.NM_TRAYS_METRICS_L3_PATH / f'tray.{date}.{trajectoryId}.json', 'w+', encoding='utf8') as file:
+        with open(paths.NM_TRAYS_METRICS_L3_PATH / f'tray.{trajectory.date}.{trajectory.ifplId}.json', 'w+', encoding='utf8') as file:
             json.dump(results, file, indent=2, default=utils.custom_json_encoder)
 
     return results

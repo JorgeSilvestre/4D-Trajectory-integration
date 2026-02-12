@@ -1,15 +1,12 @@
 import json
-# from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 
-from . import utils
-from .paths import *
+from . import paths, utils
 
 # TODO Reflejar de alguna forma el estado de la trayectoria o las transformaciones aplicadas
-
-# airports_data = pd.read_csv(AIRPORTS_PATH, sep = ',', usecols=['id','lat','lon'])
 
 # @dataclass
 class Trajectory():
@@ -77,17 +74,17 @@ class Trajectory():
 
     def __init__(self, trajectoryId, date, state='raw', demo_folder=None):
         if state == 'raw':
-            folder = NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}'
+            folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}'
         elif state == 'clean':
-            folder = NM_TRAJECTORIES_PATH / f'flightDate={date}'
+            folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={date}'
         elif state == 'demo':
             folder = Path(demo_folder)
 
         self.vectors = pd.read_parquet(folder /  f'vectors.{date}.parquet',
                                     engine='pyarrow', dtype_backend='pyarrow',
                                     filters=[('ifplId', '==', trajectoryId)])
-        
-        metadata = pd.read_parquet(folder /  f'flights.{date}.parquet', 
+
+        metadata = pd.read_parquet(folder /  f'flights.{date}.parquet',
                                  engine='pyarrow', dtype_backend='pyarrow',
                                  filters=[('ifplId', '==', trajectoryId)]).iloc[0].to_dict()
 
@@ -142,17 +139,17 @@ class Trajectory():
 
     def save(self):
         # TODO: Adapt to using parquet instead of individual jsons
-        folder = NM_TRAJECTORIES_RAW_PATH / f'flightDate={self.date}'
+        folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={self.date}'
         with open(folder / f'tray.{self.ifplId}.json', 'r', encoding='utf8') as file:
             old_metadata = json.load(file)
         metadata = {}
         for k in old_metadata.keys():
             metadata[k] = getattr(self, k)
 
-        folder = NM_TRAJECTORIES_PATH / f'flightDate={self.date}'
+        folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={self.date}'
         if not folder.exists(): folder.mkdir(parents=True)
         with open(folder / f'flights.{self.ifplId}.parquet', 'w+', encoding='utf8') as file:
             json.dump(metadata, file, indent=2, default=utils.custom_json_encoder)
 
         if self.save_single_tray:
-            self.vectors.to_parquet(NM_TRAJECTORIES_PATH / f'tray.{self.date}.parquet', engine='pyarrow')
+            self.vectors.to_parquet(paths.NM_TRAJECTORIES_PATH / f'tray.{self.date}.parquet', engine='pyarrow')

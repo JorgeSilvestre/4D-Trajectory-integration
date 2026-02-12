@@ -18,7 +18,7 @@ The integration pipeline operates on L1 cleaned data and produces L2 integrated 
 ### Purpose
 
 Network Manager provides flight information through two complementary data streams:
-- **Flight Plans (FPLAN)**: Pre-flight planned information  
+- **Flight Plans (FPLAN)**: Pre-flight planned information
 - **Flight Data (FDATA)**: Operational execution information
 
 These must be merged to create a complete view of each flight containing both planned and actual operational data.

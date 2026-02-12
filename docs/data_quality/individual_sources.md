@@ -7,7 +7,7 @@ Quality metrics are automatically generated for each processing date and stored 
 ```
 reports/
 ├── L0_fplan/          # Raw Network Manager Flight Plans
-├── L0_fdata/          # Raw Network Manager Flight Data  
+├── L0_fdata/          # Raw Network Manager Flight Data
 ├── L0_vectors/        # Raw OpenSky state vectors
 ├── L0_taf/            # Raw Terminal Area Forecasts
 ├── L1_fplan/          # Cleaned Flight Plans

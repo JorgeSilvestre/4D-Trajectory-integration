@@ -6,7 +6,7 @@ The Network Manager (NM), operated by EUROCONTROL, is the central system respons
 
 In contrast to surveillance-based sources, Network Manager data represents the **operational intent and status of flights**, as defined and updated through flight plan submissions and operational messages. Within this project, NM data is used to provide authoritative flight-level metadata that complements surveillance-derived trajectories, enabling flight identification, temporal alignment, and consistency checks.
 
-The original data is delivered as highly nested JSON messages. 
+The original data is delivered as highly nested JSON messages.
 
 ---
 
@@ -20,7 +20,7 @@ Flight Plan data is provided through restricted Network Manager services. Access
 
 ### Data structure
 
-Flight Plan messages describe the **intended characteristics of a flight**, and may be updated multiple times prior to departure. 
+Flight Plan messages describe the **intended characteristics of a flight**, and may be updated multiple times prior to departure.
 
 | Attribute name | Data type | Example value | Description |
 |---------------|-----------|---------------|-------------|

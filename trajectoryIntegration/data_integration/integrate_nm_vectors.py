@@ -35,8 +35,8 @@ FLIGHT_ATTRIBUTE_NAMES = [
 def nm_merge_fplan_fdata(date: str) -> None:
     """Merge Network Manager flight plan and flight data into consolidated flight records.
 
-    Combines information from flight plan messages (FPLAN) and flight data messages 
-    (FDATA) for a given date. The function resolves message versioning, consolidates 
+    Combines information from flight plan messages (FPLAN) and flight data messages
+    (FDATA) for a given date. The function resolves message versioning, consolidates
     duplicate attributes, and validates temporal consistency between the two sources.
 
     The merged dataset contains both planned information (from FPLAN) and actual
@@ -107,7 +107,7 @@ def nm_merge_fplan_fdata(date: str) -> None:
     # Clean up
     flights = flights.drop_duplicates()
     flights = flights.drop(['timestamp', 'flightDataVersionNr'], axis=1)
-    
+
     # Reorder columns to match standard schema
     flights = flights[FLIGHT_ATTRIBUTE_NAMES]
 
@@ -117,8 +117,8 @@ def nm_merge_fplan_fdata(date: str) -> None:
     output_file = paths.NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet'
     flights.to_parquet(output_file, index=False)
 
-def nm_integrate_flight_vectors(date: str, 
-                                airports_dep: list|tuple = tuple(), 
+def nm_integrate_flight_vectors(date: str,
+                                airports_dep: list|tuple = tuple(),
                                 airports_dest: list|tuple = tuple()) -> None:
     """Integrate Network Manager flights with OpenSky state vectors to construct trajectories.
 
@@ -135,7 +135,7 @@ def nm_integrate_flight_vectors(date: str,
 
     Args:
         date: Processing date in format 'YYYY-MM-DD'.
-        airports_dep: List of departure airport ICAO codes for filtering. 
+        airports_dep: List of departure airport ICAO codes for filtering.
             Empty tuple means no filtering.
         airports_dest: List of destination airport ICAO codes for filtering.
             Empty tuple means no filtering.
@@ -143,9 +143,9 @@ def nm_integrate_flight_vectors(date: str,
     Returns:
         None. Writes outputs to:
             - `data/L2/nmTrajectories/tray.{date}.parquet`: All state vectors
-            - `data/L2/nmTrajectories/flightDate={date}/tray.{ifplId}.json`: 
+            - `data/L2/nmTrajectories/flightDate={date}/tray.{ifplId}.json`:
               Metadata per trajectory
-            - `reports/L2_integration_metrics/integration.{date}.json`: 
+            - `reports/L2_integration_metrics/integration.{date}.json`:
               Integration statistics
 
     Notes:
@@ -168,12 +168,12 @@ def nm_integrate_flight_vectors(date: str,
     flights = pd.read_parquet(
         paths.NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet',
         engine='pyarrow', dtype_backend='pyarrow', filters=filters)
-    
+
     integration_metrics['num_flights_initial'] = len(flights)
 
     # Remove return flights (same origin and destination)
     flights = flights[flights.aerodromeOfDeparture != flights.aerodromeOfDestination]
-    
+
     integration_metrics['num_flights'] = len(flights)
     # integration_metrics['returned_flights'] = (
     #     integration_metrics['num_flights_initial'] - integration_metrics['num_flights'])
@@ -213,8 +213,8 @@ def nm_integrate_flight_vectors(date: str,
 
         # Join vectors with flights on icao24
         joined_vectors = pd.merge(
-            flights, 
-            vectors_icao, #.drop('callsign', axis=1), 
+            flights,
+            vectors_icao, #.drop('callsign', axis=1),
             on='icao24', how='inner')
         # Filter by temporal overlap: vector must be within flight execution window
         # Apply TIME_EXPANSION tolerance for vectors near takeoff/landing
@@ -263,7 +263,7 @@ def nm_integrate_flight_vectors(date: str,
         vector_counts = joined_vectors.groupby('ifplId').size()
         sufficient_vectors = vector_counts[vector_counts >= params.MIN_VECTOR_NUMBER]
         joined_vectors = joined_vectors[joined_vectors.ifplId.isin(sufficient_vectors.index)]
-        
+
         integration_metrics['num_joined_vectors_final'] = len(joined_vectors)
         integration_metrics['num_joined_flights_final'] = len(sufficient_vectors)
         integration_metrics['removed_short_trajectories'] = integration_metrics['num_joined_flights'] - len(sufficient_vectors)
@@ -279,8 +279,8 @@ def nm_integrate_flight_vectors(date: str,
                 icao24=flight.icao24.values[0],
                 aerodromeOfDeparture=flight.aerodromeOfDeparture.values[0],
                 aerodromeOfDestination=flight.aerodromeOfDestination.values[0],
-                airline=flight.operator.values[0] 
-                        if pd.notna(flight.operator.values[0]) 
+                airline=flight.operator.values[0]
+                        if pd.notna(flight.operator.values[0])
                         else flight.operatingOperator.values[0],
                 estimatedTakeOffTime=(flight.estimatedTakeOffTime.values[0]),
                 estimatedTimeOfArrival=(flight.estimatedTimeOfArrival.values[0]),
@@ -302,12 +302,11 @@ def nm_integrate_flight_vectors(date: str,
         # Write trajectory data
         file_path = folder / f'vectors.{date}.parquet'
         joined_vectors.reset_index(drop=True).to_parquet(file_path, index=False)
-        # Write trajectory metadata        
-        metadata = list(map(get_metadata, 
-                            joined_vectors.ifplId.drop_duplicates()))
+        # Write trajectory metadata
+        metadata = list(map(get_metadata, joined_vectors.ifplId.drop_duplicates()))
         file_path = folder / f'flights.{date}.parquet'
         pd.DataFrame(metadata).to_parquet(file_path, index=False)
-        
+
         # Write integration metrics
         if not paths.INTEGRATION_METRICS_PATH.exists():
             paths.INTEGRATION_METRICS_PATH.mkdir(parents=True)

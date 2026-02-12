@@ -62,5 +62,5 @@ These characteristics require temporal alignment and consolidation of forecast s
 
 ## References
 
-- ICAO. *Annex 3 – Meteorological Service for International Air Navigation*.  
+- ICAO. *Annex 3 – Meteorological Service for International Air Navigation*.
 - World Meteorological Organization. *Manual on Codes (WMO-No. 306)*.

@@ -473,7 +473,7 @@ Trajectory metrics are stored as JSON files with the following structure:
   "num_vectors": 1234,
   "duration": 4567,
   "distance": 523.45,
-  
+
   "completitude": {
     "timestamp": 1.0,
     "latitude": 1.0,
@@ -481,7 +481,7 @@ Trajectory metrics are stored as JSON files with the following structure:
     "altitude": 0.95,
     "velocity": 0.89
   },
-  
+
   "distance_to_origin": 12.3,
   "distance_to_destination": 8.7,
   "missing_start": false,
@@ -489,13 +489,13 @@ Trajectory metrics are stored as JSON files with the following structure:
   "airports_distance": 489.2,
   "effective_flight_time": 4320,
   "last_altitude_before_ground": 2156.0,
-  
+
   "density": 2.36,
   "mean_granularity": 12.5,
   "std_granularity": 8.3,
   "mean_granularity_distance": 0.42,
   "std_granularity_distance": 0.28,
-  
+
   "gaps": [
     {"index": 245, "size": 420},
     {"index": 789, "size": 315}
@@ -513,7 +513,7 @@ Trajectory metrics are stored as JSON files with the following structure:
   "continuity_ratio": 0.757,
   "discontinuity_time": 376,
   "discontinuity_ratio": 0.082,
-  
+
   "thresholds": {
     "THRESHOLD_DISTANCE_TO_AIRPORT": 50,
     "THRESHOLD_GAP_TIME": 300,

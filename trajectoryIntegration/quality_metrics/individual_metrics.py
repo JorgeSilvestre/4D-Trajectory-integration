@@ -19,13 +19,13 @@ def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
     elif state == 'clean':
         data_path = paths.OPENSKY_PARQUET_VECTORS_PATH
         output_path = paths.OPENSKY_VECTORS_METRICS_L1_PATH / f'vectors.L1.{date}.json'
-
     file_list = list((data_path / f'flightDate={date}').glob('*.parquet'))
-    if not file_list:
-        return None
+    if len(file_list)==0:
+        raise FileNotFoundError(data_path)
 
     res = []
     max_workers=os.cpu_count()
+    # Reuse pool to process all files
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         for path in tqdm(file_list, desc=f'{date} VECTORS | Metrics', ncols=125):
             data = pd.read_parquet(path, engine='pyarrow', dtype_backend='pyarrow')
@@ -45,7 +45,7 @@ def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
             partial_results['completitude'] = {col:val/len(data) for col, val in completitude.items()}
             partial_results['duplicate_records'] = data.shape[0] - data.drop_duplicates().shape[0]
             partial_results['reused_position'] = data.shape[0] - data.drop_duplicates(subset=['icao24','time_position','latitude','longitude']).shape[0]
-            partial_results['nulls'] = {
+            partial_results['null_position'] = {
                 'latitude': int(data.latitude.isna().sum()),
                 'longitude': int(data.longitude.isna().sum()),
                 'latlon': len(data) - len(data[['latitude','longitude']].dropna(how='all'))
@@ -62,9 +62,9 @@ def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
     results['completitude'] = {}
     for attr in completitude_fields:
         results['completitude'][attr] = sum([r['completitude'][attr]*r['num_vectors'] for r in res])/results['num_vectors']
-    results['nulls'] = {}
+    results['null_position'] = {}
     for attr in ['latitude','longitude','latlon']:
-        results['nulls'][attr] = sum([x['nulls'][attr] for x in res])
+        results['null_position'][attr] = sum([x['null_position'][attr] for x in res])
 
     if state == 'raw':
         data = pd.read_parquet(file_list, columns=['hexid', 'callsign'],
@@ -73,8 +73,8 @@ def calculate_metrics_openskyVectors(date: str, state: str = 'clean') -> None:
     elif state == 'clean':
         data = pd.read_parquet(file_list, columns=['icao24', 'callsign'],
                                engine='pyarrow', dtype_backend='pyarrow')
-    uniqueness = data[['icao24','callsign']].nunique()
-    results['uniqueness'] = {col:val for col, val in uniqueness.items()}
+    unique_values = data[['icao24','callsign']].nunique()
+    results['unique_values'] = {col:val for col, val in unique_values.items()}
 
     if not output_path.parent.exists():
         output_path.parent.mkdir(parents=True)

@@ -14,18 +14,18 @@ from .sorting_algorithms import haversine_distance, path_length
 
 def process_trajectories(date: str) -> None:
     file_path = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}' / f'flights.{date}.parquet'
-    tray_ids = pd.read_parquet(file_path, columns=['ifplId'], engine='pyarrow').ifplId.to_list()
-    trays = (Trajectory(x, date) for x in tray_ids)
+    traj_ids = pd.read_parquet(file_path, columns=['ifplId'], engine='pyarrow').ifplId.to_list()
+    trajs = (Trajectory(x, date) for x in traj_ids)
 
-    # Parallelized
+    # Parallel
     with ProcessPoolExecutor(max_workers=7) as executor:
-        result = tqdm(executor.map(_process_trajectory_params, trays, chunksize=1, buffersize=15),
-                      total=len(tray_ids), ncols=125, leave=True)
+        result = tqdm(executor.map(_process_trajectory_params, trajs, chunksize=1, buffersize=15),
+                      total=len(traj_ids), ncols=125, leave=True)
         result = list(result)
 
-    ## Not Parallelized
+    # Sequential
     # result = []
-    # for tray in tqdm(trays, total=len(tray_ids), ncols=125, leave=True):
+    # for tray in tqdm(trajs, total=len(traj_ids), ncols=125, leave=True):
     #     result.append(_process_trajectory_params(tray))
 
     # Write updated metadata
@@ -191,7 +191,7 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     metrics['process_time'] = time.time() - ts_start
 
     # print results
-    # print(metrics["initial_distance"], 'Mi ->', metrics["final_distance"], 
+    # print(metrics["initial_distance"], 'Mi ->', metrics["final_distance"],
     #       f'Mi (-{((metrics["initial_distance"]-metrics["final_distance"])/metrics["initial_distance"]):.2%})')
 
     trajectory.sorting_metrics = metrics
@@ -252,7 +252,7 @@ def calculate_max_rotation(tracks: pd.Series):
         return 0.0
     deltas = tracks.diff().dropna()
     # mod operation throws NotImplementedError from pyarrow -> cast to numpy
-    deltas = (deltas.to_numpy('float32') + 180) % 360 - 180 
+    deltas = (deltas.to_numpy('float32') + 180) % 360 - 180
 
     turn_right = (deltas[deltas>0].sum())
     turn_left = -(deltas[deltas<0].sum())

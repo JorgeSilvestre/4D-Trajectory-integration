@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from .. import params
+
 # Distance functions
 
 def euclidean_distance(coords1, coords2):
@@ -106,8 +108,7 @@ def opt2(df: pd.DataFrame, distance_function='haversine', **kwargs):
     order = list(range(len(array)))
 
     changes = _generate_changes(0, len(array), 1)
-    max_iteraciones = 100000
-    for j in range(max_iteraciones):
+    for j in range(params.OPT_MAX_ITERATIONS):
         improvements = 0
         for i, (v1, v2) in enumerate(changes):
             candidate = np.concatenate([array[:v1],
@@ -121,6 +122,8 @@ def opt2(df: pd.DataFrame, distance_function='haversine', **kwargs):
                 improvements = True
         if not improvements:
             break
+    else:
+        raise TimeoutError('Too many iterations during the application of Opt-2.')
     return df.iloc[order]
 
 def opt2_reversed(df: pd.DataFrame, distance_function='haversine', **kwargs):
@@ -188,8 +191,7 @@ def opt2_restricted(df: pd.DataFrame, n_closest=10, distance_function='haversine
     order = list(range(len(df)))
 
     changes = _generate_changes(0, len(array), 1)
-    max_iteraciones = 100000
-    for j in range(max_iteraciones):
+    for j in range(params.OPT_MAX_ITERATIONS):
         distances = distance_matrix(array, distance_function)
         mask = np.zeros(shape=df.shape[0]).astype(bool)
         mask[0] = True
@@ -213,6 +215,8 @@ def opt2_restricted(df: pd.DataFrame, n_closest=10, distance_function='haversine
                 improvements = True
         if not improvements:
             break
+    else:
+        raise TimeoutError('Too many iterations during the application of Opt-2 restricted.')
     return df.iloc[order]
 
 def opt2_b(df: pd.DataFrame):
@@ -221,8 +225,7 @@ def opt2_b(df: pd.DataFrame):
     max_iteraciones = 100000
     changes = [(v1,v2) for v1 in range(1,len(df)-1) for v2 in range(v1+2, len(df)-1)]
     array = df[['latitude','longitude']].to_numpy()
-    order = list(range(len(array)))
-    for j in range(max_iteraciones):
+    for j in range(params.OPT_MAX_ITERATIONS):
         improvements = 0
         for i, (v1, v2) in enumerate(changes):
             current_dist = euclidean_distance(array[v1-1], array[v1]) + euclidean_distance(array[v2+1], array[v2])

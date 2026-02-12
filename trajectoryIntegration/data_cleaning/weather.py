@@ -15,7 +15,7 @@ import pytz
 from .. import paths
 
 
-def _extract_temps(temp_records):
+def _extract_temps(temp_records: list) -> list:
     """Extracts max and min temperatures and their timestamps from temperature records.
 
     Args:
@@ -45,7 +45,7 @@ def _extract_temps(temp_records):
                 res[1] = rec['valid_time']
         return res
 
-def _extract_sky_conditions(sky_record):
+def _extract_sky_conditions(sky_record: list) -> list:
     """Extracts sky cover, cloud base, and cloud type from sky condition records.
 
     Args:
@@ -80,7 +80,7 @@ def taf_forecast_process(month: str) -> None:
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         step = len(data) // (4*max_workers)
         sorted_chunks = list(executor.map(
-            _parallelize_process,
+            _parallelize_taf_forecast_process,
             (data.iloc[i*step:(i+1)*step] for i in range(4*max_workers+1)),
             chunksize=1, buffersize=max_workers))
     data = pd.concat(sorted_chunks, axis=0)
@@ -96,7 +96,7 @@ def taf_forecast_process(month: str) -> None:
     output_file = output_dir / f'taf.{month}.parquet'
     data.to_parquet(output_file, index=False)
 
-def _parallelize_process(data: pd.DataFrame):
+def _parallelize_taf_forecast_process(data: pd.DataFrame) -> pd.DataFrame:
     return taf_forecast_clean(taf_forecast_normalize_schema(data))
 
 def taf_forecast_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
@@ -116,11 +116,11 @@ def taf_forecast_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     data['change_indicator'] = data.change_indicator.astype('string[pyarrow]')
     data['wx_string'] = data.wx_string.astype('string[pyarrow]')
 
-    data['issue_time'] = data.issue_time.dt.tz_localize(pytz.utc)
-    data['valid_time_from'] = data.valid_time_from.dt.tz_localize(pytz.utc)
-    data['valid_time_to'] = data.valid_time_to.dt.tz_localize(pytz.utc)
-    data['time_from'] = data.time_from.dt.tz_localize(pytz.utc)
-    data['time_to'] = data.time_to.dt.tz_localize(pytz.utc)
+    data['issue_time'] = data.issue_time.dt.tz_localize(pytz.utc).dt.as_unit('s')
+    data['valid_time_from'] = data.valid_time_from.dt.tz_localize(pytz.utc).dt.as_unit('s')
+    data['valid_time_to'] = data.valid_time_to.dt.tz_localize(pytz.utc).dt.as_unit('s')
+    data['time_from'] = data.time_from.dt.tz_localize(pytz.utc).dt.as_unit('s')
+    data['time_to'] = data.time_to.dt.tz_localize(pytz.utc).dt.as_unit('s')
 
     data['probability'] = data.probability.astype('int32[pyarrow]')
     data['wind_dir_degrees'] = data.wind_dir_degrees.astype('int32[pyarrow]')
@@ -154,8 +154,6 @@ def taf_forecast_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     # Icing condition
     # Almost always empty
 
-    data['date'] = data.issue_time.dt.date.astype('string[pyarrow]')
-
     return data
 
 def taf_forecast_clean(data: pd.DataFrame) -> pd.DataFrame:
@@ -177,6 +175,10 @@ def taf_forecast_clean(data: pd.DataFrame) -> pd.DataFrame:
     # Fix NA values
     for col in ['sky_condition','turbulence_condition','icing_condition','temperature']:
         data[col] = data[col].apply(lambda x: x if len(x)>0 else pd.NA)
+
+    # Add columns
+    data['date'] = data.issue_time.dt.date.astype('string[pyarrow]')
+    # data['report_id'] = data.station_id + '-' + data.issue_time.dt.total_seconds()
 
     return data
 

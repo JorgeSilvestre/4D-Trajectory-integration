@@ -1,8 +1,8 @@
 # Data Cleaning (L1)
 
-This document defines the **L1 cleaning stage** of the pipeline. At L1, each raw source (L0) is cleaned independently into typed, source-local parquet datasets. No cross-source joins are performed at this stage.
+This document specifies the **L1 cleaning stage** of the pipeline. At this stage, each source is processed **independently** to transform raw inputs (L0) into standardized and validated datasets, without cross-source joins.
 
-Source-specific raw semantics are documented in `docs/raw_data/`.
+Raw-source structure and semantics are documented under `docs/raw_data/`.
 
 <figure><p align="center">
 <img src="../assets/cleaning_pipeline.png" width="700"  alt=""></p>

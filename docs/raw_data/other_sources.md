@@ -1,41 +1,86 @@
+# Auxiliary reference sources
 
+## Airport reference datasets
 
-# Airports dataset from OurAirports
+The cleaning layer includes utilities to generate an airport reference parquet from two possible raw sources:
 
-## Data source description
+- **FlightRadar24 airports JSON** (`fr24_airports_process`).
+- **OurAirports CSV snapshot** (`ourairports_airports_process`).
 
-OurAirports is an open, community-maintained dataset that provides structured information about airports worldwide. The data is curated from public sources and user contributions and distributed under an open license.
+Both are source-local L0→L1 transformations used to provide static airport metadata for enrichment stages.
 
-In this project, the OurAirports dataset is used as a static reference dataset to enrich trajectories and flights with airport metadata, such as geographic location and identifiers. It provides a lightweight and reliable way to map airport codes to spatial information.
+---
 
-The dataset is distributed as CSV files and is periodically updated.
+## OurAirports
 
-## Access
+### Description
 
-The dataset is publicly available and can be downloaded directly from the OurAirports website. No authentication or access restrictions apply.
+OurAirports is a community-maintained open dataset with worldwide airport metadata.
 
-The project uses a local snapshot of the dataset.
+### Access
 
-## Data structure
+Public download: <https://ourairports.com>
 
-Each record represents an airport or aerodrome.
+### Data structure (raw snapshot)
 
-| Attribute name  | Data type | Example value                            | Description                               |
-| --------------- | --------- | ---------------------------------------- | ----------------------------------------- |
-| `ident`         | string    | `"LEMD"`                                 | Airport identifier (ICAO code).           |
-| `type`          | string    | `"large_airport"`                        | Airport type classification.              |
-| `name`          | string    | `"Adolfo Suárez Madrid-Barajas Airport"` | Official airport name.                    |
-| `latitude_deg`  | float     | `40.4719`                                | Airport latitude in decimal degrees.      |
-| `longitude_deg` | float     | `-3.5626`                                | Airport longitude in decimal degrees.     |
-| `elevation_ft`  | integer   | `1998`                                   | Airport elevation above sea level (feet). |
-| `iso_country`   | string    | `"ES"`                                   | ISO country code.                         |
+| Attribute name | Type | Example value | Description |
+|---|---|---|---|
+| `ident` | string | `"LEMD"` | Airport identifier. |
+| `type` | string | `"large_airport"` | Airport category used for filtering. |
+| `icao_code` | string | `"LEMD"` | ICAO airport code. |
+| `iata_code` | string | `"MAD"` | IATA airport code. |
+| `name` | string | `"Adolfo Suárez Madrid-Barajas Airport"` | Airport name. |
+| `latitude_deg` | float | `40.4719` | Latitude in decimal degrees. |
+| `longitude_deg` | float | `-3.5626` | Longitude in decimal degrees. |
+| `elevation_ft` | integer | `1998` | Elevation in feet. |
+| `continent` | string | `"EU"` | Continent code. |
+| `iso_country` | string | `"ES"` | ISO country code. |
+| `iso_region` | string | `"ES-M"` | ISO region code. |
 
-## Known data issues and limitations
+### Transformation in this repository
 
-- Heterogeneous data quality, as the dataset is community-maintained.
-- Missing identifiers for small or private aerodromes.
-- Occasional inconsistencies between ICAO/IATA codes and airport names.
+- Keep only `large_airport` rows.
+- Project selected identifier/geospatial columns.
+- Rename to canonical names:
+  - `latitude_deg` → `latitude`
+  - `longitude_deg` → `longitude`
+  - `elevation_ft` → `elevation`
+- Persist parquet with typed numeric columns.
 
-## References
+### Known limitations
 
-- OurAirports. OurAirports – Open airport and aviation data. https://ourairports.com
+- Community curation implies heterogeneous data quality.
+- Identifier completeness varies by region/airport class.
+
+---
+
+## FlightRadar24 airports snapshot
+
+### Description
+
+FR24 airport data is stored as JSON rows and normalized to parquet as an alternative static source.
+
+### Data structure (raw snapshot)
+
+| Attribute name | Type | Example value | Description |
+|---|---|---|---|
+| `name` | string | `"Adolfo Suárez Madrid-Barajas Airport"` | Airport name. |
+| `iata` | string | `"MAD"` | IATA code. |
+| `icao` | string | `"LEMD"` | ICAO code. |
+| `lat` | float | `40.4719` | Latitude in decimal degrees. |
+| `lon` | float | `-3.5626` | Longitude in decimal degrees. |
+| `alt` | integer | `1998` | Elevation/altitude in feet. |
+
+### Transformation in this repository
+
+- Parse `rows` from `airports.json`.
+- Rename fields to canonical geospatial names:
+  - `lat` → `latitude`
+  - `lon` → `longitude`
+  - `alt` → `altitude`
+- Persist parquet for downstream enrichment.
+
+### Known limitations
+
+- Snapshot freshness depends on manual/local data refresh cadence.
+- Field semantics are source-dependent and should be validated when mixed with other airport catalogs.

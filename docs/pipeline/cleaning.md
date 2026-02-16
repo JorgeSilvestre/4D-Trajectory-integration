@@ -13,138 +13,120 @@ Raw-source structure and semantics are documented under `docs/raw_data/`.
 
 ## Scope of L1 cleaning
 
-L1 cleaning produces source-local datasets with stable schema and consistent semantics:
+L1 guarantees per-source consistency through:
 
-- stable and normalized column names,
-- validated identifiers and temporal fields,
-- removal of obvious invalid records and duplicates,
-- parquet output for efficient downstream processing.
-
-Typical operations include:
-
-### Schema normalization
-
-- Flattening/extraction of relevant attributes.
-- Source-to-canonical renaming.
-- Explicit nullable typing (pandas/pyarrow where applicable).
-- Removal of unused attributes.
-
-### Time normalization
-
-- Standardization of timestamp representation.
-- Explicit UTC localization when required.
-- Removal or filtering of invalid temporal values.
-
-### String normalization
-
-- Trimming and case standardization.
-- Conversion of empty strings to nulls.
-
-### Duplicate handling
-
-- Source-specific duplicate definitions.
-- Deterministic retention policy (e.g., first occurrence).
-
-### Ordering and propagation
-
-- Deterministic ordering using source timestamps/version fields.
-- Forward propagation of selected attributes within entity groups when required.
+- canonical column naming,
+- deterministic type conversion,
+- temporal normalization to UTC-aware semantics,
+- invalid-record filtering,
+- duplicate handling,
+- deterministic ordering and source-specific consolidation rules.
 
 ---
 
-## OpenSky Network – State Vectors
-
-This section documents the operations implemented in `trajectoryIntegration/data_cleaning/surveillance.py`.
+## OpenSky Network — State Vectors (`surveillance.py`)
 
 ### Schema normalization
 
-- Drop unused OpenSky attributes: `sensors`, `spi`, `position_source`, `origin_country`.
-- Rename OpenSky fields to canonical names (e.g., `hexid` → `icao24`, `track` → `true_track`).
+- Drop unused columns: `sensors`, `spi`, `position_source`, `origin_country`.
+- Rename OpenSky fields to canonical names (`hexid` → `icao24`, `track` → `true_track`, etc.).
 - Localize `time_position` and `last_contact` to UTC and truncate to second resolution.
-- Enforce selected dtypes (e.g., `squawk` as `string[pyarrow]`).
 
-### Invalid observation filtering
+### Cleaning rules
 
-Discard records when any of the following holds:
+- Remove rows with missing `icao24` or invalid/missing geospatial coordinates.
+- Remove duplicates on (`icao24`, `time_position`, `latitude`, `longitude`).
+- Normalize `icao24`/`callsign` to uppercase.
+- Trim callsign spaces, remove callsigns containing embedded blanks, and convert empty strings to null.
+- Sort by (`icao24`, `time_position`).
 
-- Missing `icao24`.
-- Missing `latitude` or `longitude`.
-- `latitude ∉ [-90, 90]`.
-- `longitude ∉ [-180, 180]`.
-
-### Duplicate detection
-
-Remove duplicates using key:
-
-- `icao24`,
-- `time_position`,
-- `latitude`,
-- `longitude`.
-
-### Text normalization
-
-- Trim trailing blanks from `callsign`.
-- Discard callsigns containing embedded blanks.
-- Uppercase `icao24` and `callsign`.
-- Replace empty callsigns with null values.
-
-### Ordering
-
-Sort state vectors by:
-
-1. `icao24`,
-2. `time_position`.
-
-### Derived attributes
+### Derived columns and output contract
 
 - `timestamp := time_position`
 - `altitude := geo_altitude`
-
-### Output contract
-
-L1 OpenSky vectors are emitted with fixed column ordering:
-
-`timestamp`, `icao24`, `callsign`, `time_position`, `last_contact`, `latitude`, `longitude`, `altitude`, `baro_altitude`, `geo_altitude`, `velocity`, `vertical_rate`, `true_track`, `on_ground`, `squawk`.
+- Output fixed column order:
+  `timestamp`, `icao24`, `callsign`, `time_position`, `last_contact`, `latitude`, `longitude`, `altitude`, `baro_altitude`, `geo_altitude`, `velocity`, `vertical_rate`, `true_track`, `on_ground`, `squawk`.
 
 ---
 
-## Network Manager – Flight Plans (FPLAN)
+## Network Manager — Flight Plans (`flight_plans.py`, FPLAN)
 
-### Schema extraction and flattening
+### Schema normalization
 
-Raw Flight Plan JSON messages are flattened using explicit attribute paths.
+- Flatten nested JSON messages using explicit path mappings.
+- Rename fields to canonical schema.
+- Convert `timestamp` and `estimatedOffBlockTime` to UTC-aware datetimes.
+- Convert selected text fields to nullable string dtypes.
 
-### Type normalization
+### Cleaning and consolidation
 
-- Timestamps are normalized to UTC-aware UNIX-time semantics.
-- Duration-like fields are converted to integer minutes.
-
-### Ordering and deduplication
-
-- Sort by flight identifier and message timestamp.
-- Remove duplicates excluding the unique message identifier.
-
-### Attribute propagation
-
-Within each flight, selected attributes are forward-filled across message versions.
+- Remove duplicates ignoring source `uuid`.
+- Sort by (`ifplId`, `timestamp`).
+- Normalize identifier/operator text formatting.
+- Convert `totalEstimatedElapsedTime` (HHMM) to integer minutes.
+- Forward-fill selected attributes within each `ifplId`.
+- Keep consolidated latest version after deduplication.
 
 ---
 
-## Network Manager – Flight Data (FDATA)
+## Network Manager — Flight Data (`flight_plans.py`, FDATA)
 
-### Schema extraction and concatenation
+### Schema normalization
 
-Flight Data records are extracted from multiple JSON files and concatenated into one daily table.
+- Flatten nested JSON using FDATA path mappings.
+- Convert version and distance metrics to integer dtypes.
+- Convert all event-time columns to UTC-aware datetimes.
+- Normalize string-typed identifiers and categorical fields.
 
-### Attribute propagation
+### Cleaning and consolidation
 
-Aircraft identifiers and selected operational timestamps are propagated across versions of the same flight.
+- Remove duplicates ignoring source `uuid`.
+- Sort by (`ifplId`, `flightDataVersionNr`).
+- Normalize text identifiers/operators.
+- Forward-fill selected attributes (`icao24`, `actualTakeOffTime`, `actualTimeOfArrival`) within each `ifplId`.
+- Keep consolidated latest version after deduplication.
+
+---
+
+## Weather — TAF (`weather.py`)
+
+### Schema normalization
+
+- Drop unused raw columns (`form`, `raw_text`).
+- Convert core string/numeric columns to explicit dtypes.
+- Localize temporal fields (`issue_time`, validity fields, change-window fields) to UTC.
+- Extract nested list-based structures:
+  - temperature list → `max_temp`, `max_temp_timestamp`, `min_temp`, `min_temp_timestamp`
+  - sky-condition list → `sky_cover`, `cloud_base_ft_agl`, `cloud_type`
+
+### Cleaning rules
+
+- Normalize wind direction with modulo 360.
+- Impute missing validity boundaries from `issue_time` with fixed offsets.
+- Convert empty nested-list weather fields (`sky_condition`, `turbulence_condition`, `icing_condition`, `temperature`) to null.
+- Add derived `date` from `issue_time`.
+
+---
+
+## Auxiliary static sources (`additional.py`)
+
+### OurAirports CSV
+
+- Filter to `large_airport`.
+- Project selected identifier/geospatial columns.
+- Rename geospatial/elevation fields to canonical names and apply typed numerics.
+
+### FlightRadar24 airports JSON
+
+- Read airport rows from JSON snapshot.
+- Rename geospatial/elevation fields to canonical names.
+- Persist normalized parquet to airport reference path.
 
 ---
 
 ## Relationship with later stages
 
-- **L2 (Integration)** combines L1 datasets across sources.
-- **L3 (Trajectories)** builds temporally coherent trajectories with additional trajectory-level cleaning.
+- **L2 (Integration)** joins cleaned source-local datasets.
+- **L3 (Trajectories)** applies trajectory-level temporal/spatial consistency processing.
 
-Keeping L1 strictly source-local improves traceability, validation, and robustness of integration.
+Keeping L1 source-local improves auditability and fault isolation before integration.

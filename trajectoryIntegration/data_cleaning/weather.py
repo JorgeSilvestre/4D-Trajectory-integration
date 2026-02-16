@@ -1,8 +1,14 @@
-"""Module for processing and cleaning TAF (Terminal Aerodrome Forecast) weather data.
+"""TAF weather cleaning pipeline (L0 → L1).
 
-This module provides functions to extract, normalize, and clean weather data from TAF
-forecasts and reports. It handles temperature, sky conditions, and other meteorological
-parameters, preparing the data for integration into trajectory analysis.
+This module transforms decoded TAF forecast records into an L1 parquet dataset
+with normalized schema, UTC-aware temporal fields, and extracted weather
+substructures (temperature and sky conditions).
+
+Main stages:
+- `taf_forecast_normalize_schema`: drop unused fields, convert dtypes, extract
+  nested weather lists into scalar columns.
+- `taf_forecast_clean`: apply deterministic value fixes and null handling.
+- `taf_forecast_process`: orchestrate parallel chunk processing and persistence.
 """
 
 import datetime
@@ -65,10 +71,13 @@ def _extract_sky_conditions(sky_record: list) -> list:
         ]
 
 def taf_forecast_process(month: str) -> None:
-    """Parse TAF weather data (decoded) from a parquet file and write into a parquet file
+    """Process decoded TAF records for a month and write L1 parquet output.
 
     Args:
-        month: String with a month in format 'YYYY-MM'
+        month: Month partition in ``YYYY-MM`` format.
+
+    Returns:
+        None.
     """
 
     input_dir = paths.TAF_RAW_PATH / f'month={month}'
@@ -100,13 +109,14 @@ def _parallelize_taf_forecast_process(data: pd.DataFrame) -> pd.DataFrame:
     return taf_forecast_clean(taf_forecast_normalize_schema(data))
 
 def taf_forecast_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
-    """Normalizes the schema of TAF forecast data by dropping columns, setting data types, and extracting nested fields.
+    """Normalize decoded TAF schema and extract nested weather attributes.
 
     Args:
-        data (pd.DataFrame): The raw TAF data DataFrame.
+        data: Raw TAF DataFrame.
 
     Returns:
-        pd.DataFrame: The normalized DataFrame with updated schema.
+        Normalized DataFrame with typed scalar columns and extracted
+        temperature/sky-condition attributes.
     """
     # Drop unused columns
     data = data.drop(['form', 'raw_text'], axis=1)
@@ -157,13 +167,16 @@ def taf_forecast_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 def taf_forecast_clean(data: pd.DataFrame) -> pd.DataFrame:
-    """Cleans the TAF forecast data by fixing column values and handling NA values.
+    """Apply deterministic cleaning rules to normalized TAF data.
+
+    Rules include wind-direction modulo normalization, fallback validity windows,
+    and conversion of empty list-like weather fields to explicit null values.
 
     Args:
-        data (pd.DataFrame): The normalized TAF data DataFrame.
+        data: Normalized TAF DataFrame.
 
     Returns:
-        pd.DataFrame: The cleaned DataFrame.
+        Cleaned DataFrame ready for L1 persistence.
     """
     # Fix column values
     data['wind_dir_degrees'] = data.wind_dir_degrees.astype('float') % 360

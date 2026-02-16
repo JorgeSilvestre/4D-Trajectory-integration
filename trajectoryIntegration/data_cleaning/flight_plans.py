@@ -1,17 +1,19 @@
-"""
-Flight data cleaning (L0 → L1).
+"""Network Manager/OpenSky Flights cleaning pipelines (L0 → L1).
 
-This module processes raw data (L0) from two complementary sources (Network Manager and OpenSky
-Flight) into their cleaned and normalized form as defined in L1. Network Manager has two endpoints
-that must be processed separately. OpenSky Flights is currently not used in the project, but it
-is kept as legacy due to being an open data source.
+This module transforms flight-level raw feeds into L1 parquet datasets.
 
-Each pipeline performs source-specific schema normalization, basic data cleaning and
-semantic consolidation (e.g. version resolution), producing L1 parquet datasets
-ready for downstream integration.
+Implemented pipelines:
 
-The module is responsible for both processing logic and I/O, following a data
-maturity model where L0 is raw data and L1 corresponds to cleaned, source-level data.
+- `nm_fplan_process`: flattens and cleans Network Manager Flight Plan messages
+  (FPLAN), then consolidates one latest snapshot per `ifplId`.
+- `nm_fdata_process`: flattens and cleans Network Manager Flight Data messages
+  (FDATA), ordering by `flightDataVersionNr` and retaining the latest version.
+- `opensky_flights_json_to_parquet`: legacy conversion utility for OpenSky
+  Flights JSON files (currently outside the core integration flow).
+
+Common processing patterns include schema normalization, UTC-aware timestamp
+conversion, identifier normalization, duplicate removal, and forward propagation
+of attributes that may appear only in later message versions.
 """
 
 import datetime
@@ -107,17 +109,17 @@ def flatten_dict(data: list[dict], paths: list[str]) -> list:
     return list(map(extract_attributes, data))
 
 def convert_time_column(column: pd.Series) -> pd.Series:
-    """
-    Convert ISO8601 timestamps to Unix epoch seconds.
+    """Convert timestamp-like values to UTC-aware second-resolution datetimes.
 
-    The conversion assumes UTC timestamps and applies a global timezone displacement
-    defined in params.TIMEZONE_DISPLACEMENT.
+    Input values are parsed using pandas ISO8601 support. If timezone information
+    is present, values are converted to UTC. Otherwise, values are interpreted as
+    `Europe/Madrid` local time and then converted to UTC.
 
     Args:
-        column (pd.Series): Series containing ISO8601 timestamp strings.
+        column: Series with timestamp strings or datetime-like values.
 
     Returns:
-        pd.Series: Integer epoch timestamps in seconds.
+        Series of timezone-aware UTC datetimes at second resolution.
     """
 
     column = pd.to_datetime(column.sort_values(), format='ISO8601', cache=True)
@@ -131,15 +133,17 @@ def convert_time_column(column: pd.Series) -> pd.Series:
 
 ### FLIGHT PLANS ----------------------------------------------------------------------------------
 def nm_fplan_process(date: str) -> None:
-    """
-    Process NM Flight Plan (FPLAN) messages for a given date into L1 parquet files.
+    """Process NM Flight Plan (FPLAN) messages for one date.
 
     The pipeline flattens nested JSON messages, normalizes the schema, resolves
-    multiple message versions per flight plan and propagates stable attributes
+    multiple message versions per flight plan, and propagates stable attributes
     across updates.
 
     Args:
-        date: String with a date in format 'YYYY-MM-DD'
+        date: Date in ``YYYY-MM-DD`` format.
+
+    Returns:
+        None.
     """
 
     input_file = paths.NM_JSON_FPLAN_PATH / f'flightDate={date}' / f'flightDate={date}.json'
@@ -156,14 +160,16 @@ def nm_fplan_process(date: str) -> None:
     fplan.to_parquet(output_file, index=False)
 
 def nm_fdata_process(date: str) -> None:
-    """
-    Process NM Flight Data (FDATA) messages for a given date into L1 parquet files.
+    """Process NM Flight Data (FDATA) messages for one date.
 
-    Messages are ordered by flight data version number, normalized and cleaned to
-    produce a consolidated snapshot per flight plan.
+    Messages are ordered by flight data version number, normalized, and cleaned
+    to produce a consolidated snapshot per flight plan.
 
     Args:
-        date: String with a date in format 'YYYY-MM-DD'
+        date: Date in ``YYYY-MM-DD`` format.
+
+    Returns:
+        None.
     """
 
     data = []
@@ -197,12 +203,17 @@ def _parallelize_nm_fdata_process(str):
     pass
 
 def nm_fplan_normalize_schema(data: list[dict]) -> pd.DataFrame:
-    """
-    Process NM Flight Plan (FPLAN) messages for a given date into L1 parquet files.
+    """Normalize raw NM FPLAN messages into a typed tabular schema.
 
-    The pipeline flattens nested JSON messages, normalizes the schema, resolves
-    multiple message versions per flight plan and propagates stable attributes
-    across updates.
+    The function flattens nested JSON records according to `NAME_MAPPING_FPLAN`,
+    renames fields to canonical names, and applies baseline dtypes for temporal
+    and text attributes.
+
+    Args:
+        data: Iterable/list of raw Network Manager FPLAN JSON records.
+
+    Returns:
+        DataFrame with normalized FPLAN columns and UTC-aware temporal fields.
     """
 
     data = flatten_dict(data, NAME_MAPPING_FPLAN.keys())
@@ -223,11 +234,17 @@ def nm_fplan_normalize_schema(data: list[dict]) -> pd.DataFrame:
     return fplan
 
 def nm_fdata_normalize_schema(data: list[dict]) -> pd.DataFrame:
-    """
-    Convert OpenSky flight event JSON files into L1 parquet format.
+    """Normalize raw NM FDATA messages into a typed tabular schema.
 
-    Handles flights spanning multiple days and applies basic normalization and
-    filtering based on event timestamps.
+    The function flattens nested JSON records according to `NAME_MAPPING_FDATA`,
+    renames fields to canonical names, and applies dtype conversion for numeric,
+    text, and temporal attributes.
+
+    Args:
+        data: Iterable/list of raw Network Manager FDATA JSON records.
+
+    Returns:
+        DataFrame with normalized FDATA columns and UTC-aware temporal fields.
     """
 
     data = flatten_dict(data, NAME_MAPPING_FDATA.keys())
@@ -256,6 +273,19 @@ def nm_fdata_normalize_schema(data: list[dict]) -> pd.DataFrame:
     return fdata
 
 def nm_fplan_clean(fplan: pd.DataFrame) -> pd.DataFrame:
+    """Apply semantic cleaning and version consolidation to normalized FPLAN data.
+
+    Duplicate records (ignoring message ``uuid``) are removed, records are
+    ordered by (``ifplId``, ``timestamp``), key text fields are normalized,
+    selected attributes are forward-filled within each ``ifplId``, and the
+    latest consolidated message per unique record is retained.
+
+    Args:
+        fplan: Normalized FPLAN DataFrame.
+
+    Returns:
+        Cleaned and consolidated FPLAN DataFrame.
+    """
     # Remove duplicates - all attributes except uuid
     dups_columns = fplan.columns.difference(['uuid'])
     fplan = fplan.drop_duplicates(subset=dups_columns)
@@ -290,6 +320,19 @@ def nm_fplan_clean(fplan: pd.DataFrame) -> pd.DataFrame:
     return fplan
 
 def nm_fdata_clean(fdata: pd.DataFrame) -> pd.DataFrame:
+    """Apply semantic cleaning and version consolidation to normalized FDATA data.
+
+    Duplicate records (ignoring message ``uuid``) are removed, records are
+    ordered by (``ifplId``, ``flightDataVersionNr``), text identifiers are
+    normalized, and selected attributes are forward-filled within each
+    ``ifplId`` before retaining the latest consolidated message version.
+
+    Args:
+        fdata: Normalized FDATA DataFrame.
+
+    Returns:
+        Cleaned and consolidated FDATA DataFrame.
+    """
     # Remove duplicates
     dups_columns = fdata.columns.difference(['uuid'])
     fdata = fdata.drop_duplicates(subset=dups_columns)
@@ -328,13 +371,17 @@ NAME_MAPPING_OPENSKY_FLIGHTS = {
 }
 
 def opensky_flights_json_to_parquet(date: str) -> None:
-    """Parse OpenSky flight data from a JSON file and write into a parquet file
+    """Legacy conversion of OpenSky Flights JSON data to parquet.
 
-    Assigns each flight to the day in which it ends. Loads data from both data
-    and the previous day, and filters them based on their lastSeen timestamp.
+    Flights are assigned to the partition of their ``lastSeen`` day. To capture
+    flights spanning midnight, records from the target date and previous date are
+    loaded before temporal filtering.
 
     Args:
-        date: String with a date in format 'YYYY-MM-DD'
+        date: Target date in ``YYYY-MM-DD`` format.
+
+    Returns:
+        None.
     """
     # TODO: Align to process/normalize/clean structure
     date_dt = datetime.datetime.strptime(date, '%Y-%m-%d')

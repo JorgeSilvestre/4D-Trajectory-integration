@@ -1,3 +1,14 @@
+"""Cleaning utilities for auxiliary static datasets (L0 → L1).
+
+This module currently provides airport reference ingestion from two raw sources:
+
+- `fr24_airports_process`: JSON snapshot to parquet.
+- `ourairports_airports_process`: CSV snapshot (filtered to large airports) to parquet.
+
+Both utilities normalize geospatial/elevation fields and persist to the common
+airport L1 parquet path used by downstream enrichment steps.
+"""
+
 import json
 
 import pandas as pd
@@ -5,7 +16,13 @@ import pandas as pd
 from .. import paths
 
 def fr24_airports_process() -> None:
-    """Parse and transforms airport data from a JSON file and write into a parquet file
+    """Convert FlightRadar24 airport JSON data into normalized parquet format.
+
+    Reads a local JSON snapshot, normalizes geospatial column names, and writes
+    the result to the common airport parquet target path.
+
+    Returns:
+        None.
     """
     with open(paths.AIRPORTS_RAW_PATH / 'airports.json', 'r', encoding='utf8') as file:
         data = json.load(file)['rows']
@@ -23,6 +40,14 @@ def fr24_airports_process() -> None:
     data.to_parquet(paths.AIRPORTS_PATH, engine='pyarrow', index=False)
 
 def ourairports_airports_process() -> None:
+    """Convert an OurAirports CSV snapshot into normalized parquet format.
+
+    The transformation keeps only `large_airport` records and projects a subset
+    of identifier and geospatial columns used in this project.
+
+    Returns:
+        None.
+    """
     file_path = paths.AIRPORTS_RAW_PATH / 'airports.csv'
     data = pd.read_csv(file_path)
     # Only large airports

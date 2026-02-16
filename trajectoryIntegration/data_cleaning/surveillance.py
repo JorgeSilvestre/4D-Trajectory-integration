@@ -1,15 +1,25 @@
-"""
-Flight data cleaning (L0 → L1).
+"""OpenSky surveillance cleaning pipeline (L0 → L1).
 
-This module processes raw OpenSky state vectors (L0) into cleaned and
-normalized vectors (L1), suitable for trajectory integration.
+This module converts raw OpenSky state vectors into the project L1 schema used
+by downstream integration and trajectory reconstruction stages.
 
-The pipeline performs source-specific schema normalization, basic data cleaning, temporal ordering,
-semantic consolidation (valid positions) and removal of duplicate state vectors, producing
-L1 parquet datasets ready for downstream integration.
+Processing is organized into three core steps:
 
-The module is responsible for both processing logic and I/O, following a data
-maturity model where L0 is raw data and L1 corresponds to cleaned, source-level data.
+1. Schema normalization (`opensky_vectors_normalize_schema`):
+   - drop unused OpenSky attributes,
+   - rename fields to the internal canonical names,
+   - enforce selected PyArrow-backed dtypes,
+   - localize temporal fields to UTC and truncate them to second resolution.
+2. Semantic cleaning (`opensky_vectors_clean`):
+   - remove rows with missing/invalid geospatial coordinates,
+   - remove duplicate position reports,
+   - normalize text identifiers (`icao24`, `callsign`),
+   - compute derived L1 attributes (`timestamp`, `altitude`).
+3. Output persistence (`opensky_vectors_process`):
+   - preserve input partitioning by `flightDate=YYYY-MM-DD`,
+   - write cleaned parquet files to the L1 directory.
+
+The module also keeps a deprecated JSON-to-parquet utility for legacy datasets.
 """
 
 import json
@@ -106,7 +116,7 @@ def _parallelize_opensky_vectors_process(data: pd.DataFrame) -> pd.DataFrame:
     return opensky_vectors_clean(opensky_vectors_normalize_schema(data))
 
 def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
-    """Normalizes the schema and data types of raw OpenSky state vectors.
+    """Normalize schema and data types of raw OpenSky state vectors.
 
     Performs structural normalization by:
     - Removing unused OpenSky attributes (sensors, spi, position_source, origin_country)
@@ -119,8 +129,8 @@ def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
             'hexid', 'time_stamp', 'track', etc. (see NAME_MAPPING_OPENSKY).
 
     Returns:
-        State vectors with normalized schema. All timestamps are UTC-aware,
-        numeric fields use PyArrow dtypes, and text fields are uppercase strings.
+        State vectors with normalized schema. Timestamps are UTC-aware at
+        second resolution and selected fields use PyArrow-backed dtypes.
     """
 
     # Remove unused columns
@@ -156,13 +166,14 @@ def opensky_vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
     """
     Applies semantic cleaning to normalized OpenSky state vectors.
 
-    This function removes invalid or inconsistent state vectors and
-    enforces basic physical and formatting constraints. Specifically:
+    This function removes invalid or inconsistent state vectors and enforces
+    basic physical and formatting constraints. Specifically:
 
     - removal of vectors with missing or invalid latitude/longitude,
     - filtering of positions outside valid geographic bounds,
     - removal of duplicated state vectors per aircraft and timestamp,
     - normalization of aircraft identifiers (ICAO24, callsign),
+    - filtering of callsigns containing embedded blanks,
     - temporal ordering of state vectors per aircraft,
     - construction of derived attributes required at L1 level.
 

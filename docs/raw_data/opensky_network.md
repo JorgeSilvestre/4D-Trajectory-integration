@@ -4,7 +4,7 @@
 
 OpenSky Network is an open platform that collects and provides real-time and historical air traffic surveillance data. The data is primarily obtained from a worldwide network of ADS-B (Automatic Dependent Surveillance–Broadcast) receivers operated by volunteers and institutional partners. These receivers capture broadcasts emitted by aircraft, which include positional and kinematic information.
 
-The OpenSky Network provides access to both raw and processed surveillance data through different APIs. In this project, OpenSky constitutes the main source of surveillance information, enabling the reconstruction of 4D aircraft trajectories based on time-stamped state vectors. Additionally, the Flights API is used to retrieve flight-level metadata to support trajectory identification and integration with other data sources, although it would be desestimated due to its data limitations.
+The OpenSky Network provides access to both raw and processed surveillance data through different APIs. In this project, OpenSky constitutes the main source of surveillance information, enabling the reconstruction of 4D aircraft trajectories based on time-stamped state vectors. Additionally, the Flights API is used to retrieve flight-level metadata to support trajectory identification and integration with other data sources, although it would be later desestimated due to its data limitations.
 
 The data is provided in structured formats (mainly JSON) and represents aircraft states sampled at irregular time intervals, depending on coverage and reception conditions.
 
@@ -14,7 +14,7 @@ The data is provided in structured formats (mainly JSON) and represents aircraft
 
 ### Access
 
-State vectors are accessed through the OpenSky Network API. Access is publicly available with rate limitations, while authenticated users are granted higher request quotas and extended access to historical data. Queries can be spatially and temporally filtered.
+State vectors can be accessed through the OpenSky Network API. Access is publicly available with rate limitations, while authenticated users are granted higher request quotas and extended access to historical data. Queries can be spatially and temporally filtered.
 
 ### Data structure
 

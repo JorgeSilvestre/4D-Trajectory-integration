@@ -132,6 +132,9 @@ def calculate_distance_airports(airport_dep: str, airport_dest: str):
 
     origin_airport = airports[airports.icao_code == airport_dep].iloc[0]
     destination_airport = airports[airports.icao_code == airport_dest].iloc[0]
+    return float(sorting_algorithms.haversine_distance(
+        origin_airport[['latitude','longitude']].to_numpy(dtype='float32').reshape((1,2)),
+        destination_airport[['latitude','longitude']].to_numpy(dtype='float32').reshape((1,2)))[0])
     distance = utils.haversine_np(origin_airport.latitude,
                                   origin_airport.longitude,
                                   destination_airport.latitude,

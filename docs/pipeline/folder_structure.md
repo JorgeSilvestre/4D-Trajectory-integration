@@ -1,11 +1,10 @@
 # Folder Structure and Data Maturity Levels
 
 This repository follows a structured data layout based on **data maturity levels**,
-from raw source data (L0) to fully cleaned and integrated trajectories (L3).
+from raw source data (L0) to fully cleaned and enriched trajectories (L3). Within each directory, data is organized per source (L0 and L1) or represented entity (L2 and L3), and partitioned by date unless stated otherwise.
 
-Each level corresponds to a specific processing stage in the trajectory construction
-pipeline and is reflected consistently in both the filesystem layout and the codebase
-(see `trajectoryIntegration/paths.py`).
+
+Each level is reflected consistently in both the filesystem layout and the codebase (see `trajectoryIntegration/paths.py`).
 
 ---
 
@@ -18,7 +17,6 @@ project_root/
 ├── docs/                  # Project documentation
 └── trajectoryIntegration/ # Core processing pipelines
 ```
-
 
 ## Data directory (`data/`)
 
@@ -42,9 +40,6 @@ data/L0/
 └── airlines/           # Airline reference data
 ```
 
-L0 data is assumed to be **source-dependent**, potentially incomplete, and not suitable
-for direct integration.
-
 ---
 
 ### L1 — Cleaned individual sources (`data/L1/`)
@@ -55,21 +50,17 @@ At this level, each dataset is processed independently:
 - schema normalization
 - basic filtering and validation
 - semantic consolidation within a single source
-- conversion to efficient parquet format
 
 ```bash
 data/L1/
 ├── nmFPlan/        # Cleaned NM Flight Plans (parquet)
 ├── nmFData/        # Cleaned NM Flight Data (parquet)
-├── nmFlights/      # Consolidated NM flights
 ├── openskyFlights/ # Cleaned OpenSky flight events
 ├── openskyVectors/ # Cleaned OpenSky state vectors
 ├── taf/            # Processed TAF data
 └── airports/
     └── airports.parquet # Normalized airport reference dataset
 ```
-
-No cross-source integration occurs at this stage.
 
 ---
 
@@ -78,46 +69,38 @@ No cross-source integration occurs at this stage.
 L2 contains **integrated datasets**, where information from multiple sources is combined.
 
 Typical operations include:
+- merging disperse flight data into a single, unified representation
 - joining flight-level and vector-level data
-- aligning trajectories across sources
-- resolving inconsistencies between NM and OpenSky data
 
 ```bash
 data/L2/
-├── nmTrajectories/       # Intermediate NM trajectories
-├── openskyVectorsJoined/ # Joined OpenSky vectors
-├── openskyFlightsJoined/ # Joined OpenSky flights
-├── nmVectorsJoined/      # Joined NM vectors
-└── nmFlightsJoined/      # Joined NM flights
+├── nmFlights/      # Consolidated NM flights
+├── nmTrajectories/ # Integrated NM trajectories
+└── taf/            # Consolidated weather forecasts at the airport
 ```
-
-Some intermediate artifacts may not be persisted if trajectories are directly generated.
 
 ---
 
-### L3 — Clean trajectories (`data/L3/`)
+### L3 — Clean and enrich trajectories (`data/L3/`)
 
-L3 represents the **final trajectory products**, ready for analysis, visualization and
-evaluation.
+L3 represents the **final trajectory products**, ready for analysis, visualization and evaluation.
 
 At this level:
 - trajectories are temporally consistent
 - sorting and interpolation have been applied
 - outliers and artifacts have been removed
+- weather forecasts have been incorporated to the trajectory data
 
 ```bash
 data/L3/
 └── nmTrajectories/ # Final cleaned NM trajectories
 ```
 
-These datasets are considered stable inputs for downstream tasks.
-
 ---
 
 ## Reports directory (`reports/`)
 
-The `reports/` directory contains **quality metrics and diagnostic outputs** generated
-during processing.
+The `reports/` directory contains **quality metrics and diagnostic outputs** generated during processing.
 
 Metrics are also organized by maturity level.
 

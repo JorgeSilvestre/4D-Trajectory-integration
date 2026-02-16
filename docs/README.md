@@ -3,9 +3,21 @@
 ## Overview of the data workflow
 
 <figure align="center" >
-<img src="docs/assets/placeholder.webp" width="400px"  alt="">
+<img src="./assets/placeholder.webp" width="400px"  alt="">
 <figcaption></figcaption>
 </figure>
+
+
+The implementation of the designed ETL process is structured in five blocks:
+
+- Data extraction:
+- Data cleaning:
+- Data integration:
+- Trajectory processing:
+- Metrics and evaluation:
+
+Each of these steps is implemented as a sub-package of the `trajectoryProcessing` package.
+
 
 ## Data description
 

@@ -1,8 +1,8 @@
 # Data Cleaning (L1)
 
-This document describes the **data cleaning stage (L1)** of the pipeline. At this level, each data source is processed **independently**, transforming raw inputs (L0) into standardized, validated and analysis-ready datasets, without performing cross-source integration.
+This document specifies the **L1 cleaning stage** of the pipeline. At this stage, each source is processed **independently** to transform raw inputs (L0) into standardized and validated datasets, without cross-source joins.
 
-Details about the structure, semantics and known issues of each raw data source are documented separately under `docs/raw_data/`.
+Raw-source structure and semantics are documented under `docs/raw_data/`.
 
 <figure><p align="center">
 <img src="../assets/cleaning_pipeline.png" width="700"  alt=""></p>
@@ -11,143 +11,140 @@ Details about the structure, semantics and known issues of each raw data source 
 
 ---
 
-## Scope of L1 Cleaning
+## Scope of L1 cleaning
 
-The goal of L1 is to produce **clean, consistent datasets per source**, ensuring that:
+L1 cleaning produces source-local datasets with stable schema and consistent semantics:
 
-- schemas are normalized and stable
-- timestamps and identifiers are consistent
-- obvious inconsistencies and duplicates are removed
-- data is stored in an efficient columnar format (parquet)
+- stable and normalized column names,
+- validated identifiers and temporal fields,
+- removal of obvious invalid records and duplicates,
+- parquet output for efficient downstream processing.
 
-In particular, L1 cleaning typically includes the
-following operations.
+Typical operations include:
 
 ### Schema normalization
 
-- Extraction of relevant attributes from nested structures
-- Renaming columns using consistent naming conventions
-- Explicit typing of columns using pandas nullable / pyarrow-backed dtypes
-- Removal of unused attributes
+- Flattening/extraction of relevant attributes.
+- Source-to-canonical renaming.
+- Explicit nullable typing (pandas/pyarrow where applicable).
+- Removal of unused attributes.
 
 ### Time normalization
 
-- Conversion of timestamps to UNIX epoch seconds
-- Explicit handling of time zones and offsets
-- Removal of invalid or missing time values
+- Standardization of timestamp representation.
+- Explicit UTC localization when required.
+- Removal or filtering of invalid temporal values.
 
 ### String normalization
 
-- Standardization of string attributes to their expected formats
-- Trimming whitespace and enforcing uppercase where appropriate
-- Identification of empty strings as null values
+- Trimming and case standardization.
+- Conversion of empty strings to nulls.
 
 ### Duplicate handling
 
-- Removal of duplicate messages or records
-- Definition of source-specific uniqueness criteria
-- Preservation of the most informative or recent version when applicable
+- Source-specific duplicate definitions.
+- Deterministic retention policy (e.g., first occurrence).
 
-### Message ordering and propagation
+### Ordering and propagation
 
-- Records are ordered using source-specific versioning or timestamps
-- Selected attributes are forward-filled within logical groups
-  (e.g. flight-level identifiers)
+- Deterministic ordering using source timestamps/version fields.
+- Forward propagation of selected attributes within entity groups when required.
 
 ---
 
 ## OpenSky Network – State Vectors
 
-This section describes the cleaning operations applied to OpenSky state vector data. These operations are motivated by the known limitations and inconsistencies of ADS-B based surveillance data, as documented in the OpenSky Network description.
+This section documents the operations implemented in `trajectoryIntegration/data_cleaning/surveillance.py`.
 
 ### Schema normalization
 
-- Removal of unused attributes that are not used downstream (e.g. spi or position source) or empty (e.g. sensor metadata).
-- Timestamps are added timezone information and interpreted as UNIX time in seconds.
+- Drop unused OpenSky attributes: `sensors`, `spi`, `position_source`, `origin_country`.
+- Rename OpenSky fields to canonical names (e.g., `hexid` → `icao24`, `track` → `true_track`).
+- Localize `time_position` and `last_contact` to UTC and truncate to second resolution.
+- Enforce selected dtypes (e.g., `squawk` as `string[pyarrow]`).
 
-### Removal of invalid observations
+### Invalid observation filtering
 
-Individual state vectors are removed if they contain invalid or inconsistent values
-that make them unusable for trajectory reconstruction. An observation is discarded if any of the following conditions hold:
+Discard records when any of the following holds:
 
-- Missing aircraft identifier (`icao24`).
-- Missing latitude or longitude.
-- Latitude outside the valid range [-90°, 90°].
-- Longitude outside the valid range [-180°, 180°].
-
-These checks eliminate corrupted or incomplete observations that cannot be reliably
-placed in space or whose source is unknown.
+- Missing `icao24`.
+- Missing `latitude` or `longitude`.
+- `latitude ∉ [-90, 90]`.
+- `longitude ∉ [-180, 180]`.
 
 ### Duplicate detection
 
-Duplicate observations may occur in the raw data due to repeated aggregation or message reconstruction. Only the first instance of each duplicated observation is retained. Duplicates are identified and removed based on the combination of:
+Remove duplicates using key:
 
-- Aircraft identifier (`icao24`)
-- Position timestamp (`time_position`)
-- Latitude
-- Longitude
+- `icao24`,
+- `time_position`,
+- `latitude`,
+- `longitude`.
 
 ### Text normalization
 
-- Callsign values that are set to empty strings are replaced by explicit missing values.
+- Trim trailing blanks from `callsign`.
+- Discard callsigns containing embedded blanks.
+- Uppercase `icao24` and `callsign`.
+- Replace empty callsigns with null values.
 
-### Temporal ordering
+### Ordering
 
-State vectors are sorted by aircraft identifier and position timestamp.
+Sort state vectors by:
 
-This ordering ensures that all subsequent trajectory-level processing operates on temporally consistent sequences.
+1. `icao24`,
+2. `time_position`.
 
 ### Derived attributes
 
-Two additional attributes are introduced to simplify downstream processing:
+- `timestamp := time_position`
+- `altitude := geo_altitude`
 
-- `timestamp`: defined as the position timestamp (`time_position`), and used as the reference temporal coordinate for the state vector.
-- `altitude`: defined as the geometric altitude (`geo_altitude`), used as the default altitude reference when available.
+### Output contract
 
+L1 OpenSky vectors are emitted with fixed column ordering:
 
-
-## Network Manager – Flight Plans (FPLAN)
-
-This section describes the cleaning operations applied to Network Manager Flight Plan data to produce a consistent L1 dataset.
-
-### Schema extraction and flattening
-
-Raw Flight Plan messages are provided as deeply nested JSON records. Relevant attributes are extracted using explicit attribute paths and transformed into a flat tabular structure.
-
-### Data type normalization
-
-- All timestamps are converted to UNIX time in seconds and localized to UTC timezone.
-- Duration fields are converted to integer minutes.
-
-### Message ordering and deduplication
-
-- Messages are sorted by flight identifier and message timestamp.
-- Duplicate messages are removed based on all attributes except the unique message identifier.
-
-### Attribute propagation
-
-Some attributes may be missing in early Flight Plan messages and only appear in later updates. For each flight, missing values in selected attributes are forward-filled to ensure that the final flight plan contains the most complete information available.
-
-
-
-## Network Manager – Flight Data (FDATA)
-
-This section describes the cleaning operations applied to Network Manager Flight Data.
-
-### Schema extraction and concatenation
-
-Flight Data messages are extracted from multiple JSON files and combined into a single tabular dataset per day.
-
-### Attribute propagation
-
-Missing aircraft identifiers and key operational timestamps are propagated across
-versions within the same flight.
+`timestamp`, `icao24`, `callsign`, `time_position`, `last_contact`, `latitude`, `longitude`, `altitude`, `baro_altitude`, `geo_altitude`, `velocity`, `vertical_rate`, `true_track`, `on_ground`, `squawk`.
 
 ---
 
-## Relationship with Later Stages
+## Network Manager – Flight Plans (FPLAN)
 
-- **L2 (Integration)** combines cleaned L1 datasets across sources
-- **L3 (Trajectories)** produces fully cleaned and temporally consistent trajectories
+### Schema extraction and flattening
 
-Keeping L1 cleaning strictly source-local simplifies validation and makes later stages more robust.
+Raw Flight Plan JSON messages are flattened using explicit attribute paths.
+
+### Type normalization
+
+- Timestamps are normalized to UTC-aware UNIX-time semantics.
+- Duration-like fields are converted to integer minutes.
+
+### Ordering and deduplication
+
+- Sort by flight identifier and message timestamp.
+- Remove duplicates excluding the unique message identifier.
+
+### Attribute propagation
+
+Within each flight, selected attributes are forward-filled across message versions.
+
+---
+
+## Network Manager – Flight Data (FDATA)
+
+### Schema extraction and concatenation
+
+Flight Data records are extracted from multiple JSON files and concatenated into one daily table.
+
+### Attribute propagation
+
+Aircraft identifiers and selected operational timestamps are propagated across versions of the same flight.
+
+---
+
+## Relationship with later stages
+
+- **L2 (Integration)** combines L1 datasets across sources.
+- **L3 (Trajectories)** builds temporally coherent trajectories with additional trajectory-level cleaning.
+
+Keeping L1 strictly source-local improves traceability, validation, and robustness of integration.

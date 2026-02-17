@@ -29,7 +29,7 @@ Each state vector represents one aircraft observation. The main attributes used 
 | `latitude`      | float     | `40.4719`     | Latitude in decimal degrees.                     |
 | `longitude`     | float     | `-3.5626`     | Longitude in decimal degrees.                    |
 | `baro_altitude` | float     | `9144.0`      | Barometric altitude (meters).                    |
-| `geo_altitude`  | float     |               | Geometric altitude (meters).                     |
+| `geo_altitude`  | float     |               | Geometric altitude (feet).                     |
 | `velocity`      | float     | `230.5`       | Ground speed (m/s).                              |
 | `true_track`    | float     | `275.3`       | True track angle (degrees).                      |
 | `vertical_rate` | float     | `-7.6`        | Vertical rate (m/s).                             |

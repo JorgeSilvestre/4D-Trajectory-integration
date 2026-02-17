@@ -106,7 +106,7 @@ def calculate_metrics_trajectory(trajectory: Trajectory):
             #     exit()
     elif trajectory.state == 'clean':
         results['sorted_vectors'] = get_resorted_vectors(data)
-        results['timestamp_variation'] = get_timestamp_variation(data)
+        results['mean_timestamp_variation'] = get_mean_timestamp_variation(data)
         if not paths.NM_TRAYS_METRICS_L3_PATH.exists():
             paths.NM_TRAYS_METRICS_L3_PATH.mkdir(parents=True)
         with open(paths.NM_TRAYS_METRICS_L3_PATH / f'tray.{trajectory.date}.{trajectory.ifplId}.json', 'w+', encoding='utf8') as file:
@@ -195,11 +195,11 @@ def get_outliers_altitude():
     pass
 
 def get_resorted_vectors(data):
-    return data.reordenado.sum()
+    return data.is_moved.sum()
 
-def get_timestamp_variation(data):
-    tmp = data[data.reordenado]
+def get_mean_timestamp_variation(data):
+    tmp = data[data.is_moved]
     if len(tmp)>0:
-        return (tmp.timestamp - tmp.original_timestamp).mean()
+        return (tmp.timestamp - tmp.original_timestamp).dt.total_seconds().mean()
     else:
         return 0

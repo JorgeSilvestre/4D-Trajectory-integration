@@ -362,6 +362,64 @@ def nm_fdata_clean(fdata: pd.DataFrame) -> pd.DataFrame:
 
 ### FLIGHTS ---------------------------------------------------------------------------------------
 
+# NM ADRR Flights
+
+NAME_MAPPING_ADRR_FLIGHTS = {
+    'ECTRL ID': 'ifplId',
+    'ADEP': 'aerodromeOfDeparture',
+    'ADES': 'aerodromeOfDestination',
+    'FILED OFF BLOCK TIME': 'estimatedOffBlockTime',
+    'FILED ARRIVAL TIME': 'estimatedTimeOfArrival',
+    'ACTUAL OFF BLOCK TIME': 'actualOffBlockTime',
+    'ACTUAL ARRIVAL TIME': 'actualTimeOfArrival',
+    'AC Type': 'aircraftType',
+    'AC Operator': 'operator',
+    'AC Registration': 'registrationMark',
+    'ICAO Flight Type': 'flightType',
+    'Actual Distance Flown (nm)': 'routeLength',
+}
+
+def nm_adrr_process(date: str) -> None:
+    input_files = list((paths.NM_RAW_ADRR_PATH / f'month={date[:-3]}').glob('*.csv'))
+    if len(input_files) == 0:
+        raise FileNotFoundError
+    input_file = input_files[0]
+
+    data = pd.read_csv(input_file, engine='pyarrow', dtype_backend='pyarrow')
+    data['date'] = data['FILED OFF BLOCK TIME'].apply(lambda x: '-'.join(x[:10].split('-')[::-1]))
+    data = data[data.date == date].drop('date', axis=1)
+    data = nm_adrr_normalize_schema(data)
+    data = nm_adrr_clean(data)
+
+    output_dir = paths.NM_PARQUET_ADRR_PATH
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
+    output_file = output_dir / f'nm.adrr.{date}.parquet'
+    data.to_parquet(output_file, index=False)
+
+def nm_adrr_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
+    # Remove unused columns
+    data = data.drop(['ADEP Latitude', 'ADEP Longitude',
+                      'ADES Latitude', 'ADES Longitude',
+                      'STATFOR Market Segment', 'Requested FL'], 
+                     axis=1)
+    
+    data = data.rename(columns=NAME_MAPPING_ADRR_FLIGHTS)
+
+    time_columns = ['estimatedOffBlockTime', 'estimatedTimeOfArrival', 
+                    'actualOffBlockTime', 'actualTimeOfArrival']
+    for column in time_columns:
+        data[column] = pd.to_datetime(data[column].sort_values(), format='%d-%m-%Y %T', cache=True)
+        data[column] = data[column].dt.tz_localize(pytz.utc).dt.as_unit('s')
+
+    return data
+
+def nm_adrr_clean(data: pd.DataFrame) -> pd.DataFrame:
+    data = data.drop_duplicates()
+
+    return data
+
+
 # OpenSky Flights
 NAME_MAPPING_OPENSKY_FLIGHTS = {
     'firstSeen': 'flightStart',

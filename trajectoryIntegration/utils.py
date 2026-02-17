@@ -107,6 +107,8 @@ def get_dates_between(date_start: str, date_end: str) -> list[datetime.datetime]
     return dates
 
 def custom_json_encoder(obj) -> str:
+    if isinstance(obj, (datetime.date, datetime.timedelta)):
+        return str(obj)
     if isinstance(obj, datetime.datetime):
         return obj.isoformat()
     if isinstance(obj, bson.objectid.ObjectId):

@@ -44,6 +44,8 @@ def run():
         # individual_metrics.calculate_metrics_fplan(date, 'clean')
         # individual_metrics.calculate_metrics_fdata(date, 'clean')
 
+        # flight_plans.nm_adrr_process(date)
+
         # L2
 
         # integrate_nm_vectors.nm_merge_fplan_fdata(date)
@@ -53,8 +55,8 @@ def run():
         # integrate_taf.taf_current_report(month, set(airport_orig + airport_dest))
 
         # L3
-        process_trajectories(date)
-        # trajectory_metrics.calculate_metrics_trajectories(date, 'clean')
+        # process_trajectories(date)
+        trajectory_metrics.calculate_metrics_trajectories(date, 'clean')
         # integrate_taf.taf_integrate_vectors(date)
         pass
 

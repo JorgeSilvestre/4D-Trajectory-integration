@@ -334,13 +334,13 @@ def recalculate_timestamp(trajectory: Trajectory) -> Trajectory:
     positions = data[['latitude','longitude']].to_numpy(dtype='float32')
     cum_sum = np.cumsum(haversine_distance(positions[:-1], positions[1:]))
     cum_sum = np.concatenate([cum_sum, [0]])
-    interp_values = (data.timestamp.astype('int64[pyarrow]')//10**9).copy()
+    interp_values = data.timestamp.astype('int64[pyarrow]').copy()
     interp_values[data.is_moved.to_numpy()] = pd.NA
     interp_values.index = cum_sum
     interp_values = interp_values.interpolate(method='index', limit_direction='forward', limit_area='inside')
     interp_values = interp_values.interpolate(method='linear', limit_direction='both', limit_area='outside', order=1)
     interp_values = interp_values.round(0).astype('int64[pyarrow]').to_numpy()
-    data['timestamp'] = pd.to_datetime(interp_values, unit='s')
+    data['timestamp'] = pd.to_datetime(interp_values, unit='ms')
     data['timestamp'] = data.timestamp.dt.tz_localize('utc')
 
     trajectory.vectors = data

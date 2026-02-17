@@ -30,7 +30,7 @@ import pandas as pd
 import pytz
 from tqdm import tqdm
 
-from .. import params, paths
+from .. import paths
 
 # OpenSky to internal schema mapping
 # Maps OpenSky API field names to our standardized attribute names
@@ -88,6 +88,8 @@ def opensky_vectors_process(date: str) -> None:
     """
 
     input_files = list(paths.OPENSKY_RAW_VECTORS_PATH.glob(f'flightDate={date}/*.parquet'))
+    if len(input_files) == 0:
+        raise FileNotFoundError
     output_dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -99,7 +101,7 @@ def opensky_vectors_process(date: str) -> None:
             data = pd.read_parquet(file_path, engine='pyarrow', dtype_backend='pyarrow')
             step = len(data) // (4*max_workers)
             sorted_chunks = list(executor.map(
-                _parallelize_opensky_vectors_process,
+                _process_opensky_vectors_chunk,
                 (data.iloc[i*step:(i+1)*step] for i in range(4*max_workers+1)),
                 chunksize=1, buffersize=max_workers))
             data = pd.concat(sorted_chunks, axis=0)
@@ -112,7 +114,7 @@ def opensky_vectors_process(date: str) -> None:
     #     data = opensky_vectors_clean(data)
     #     data.to_parquet(output_dir / file_path.name, index=False)
 
-def _parallelize_opensky_vectors_process(data: pd.DataFrame) -> pd.DataFrame:
+def _process_opensky_vectors_chunk(data: pd.DataFrame) -> pd.DataFrame:
     return opensky_vectors_clean(opensky_vectors_normalize_schema(data))
 
 def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
@@ -253,7 +255,7 @@ def vectors_json_to_parquet(date: str) -> None:
             for line in tqdm(file, desc=f'{date} VECTORS', ncols=125):
                 record = json.loads(line)
                 chunk = pd.DataFrame(record['states'],
-                                     columns=params.vector_attribute_names)
+                                     columns=VECTOR_ATTRIBUTE_NAMES)
                 chunk['timestamp'] = record['time']
                 chunks.append(chunk)
             chunks_df = pd.concat(chunks)
@@ -261,5 +263,6 @@ def vectors_json_to_parquet(date: str) -> None:
         data = pd.concat(data)
 
         # Clean vectors
-        data = vectors_clean(data)
+        data = opensky_vectors_normalize_schema(data)
+        data = opensky_vectors_clean(data)
         data.to_parquet(output_dir / f'{file_path.stem}.parquet', index=False)

@@ -1,5 +1,4 @@
-import json
-from datetime import datetime
+import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -10,146 +9,83 @@ from . import paths, utils
 
 # @dataclass
 class Trajectory():
-    """Trajectory class
-    Attributes:
-        ID : str
-        callsign : str
-        icao24 : str
-        originAirport : str
-        destinationAirport : str
-        date : datetime
-        plannedDeparture : timestamp
-        plannedArrival : timestamp
-        actualDeparture : timestamp
-        actualArrival : timestamp
-        airline : str
-        dataSource : str
-        vectors : pd.DataFrame
-    Calculated attributes:
-        delayArrival = actualDeparture - plannedDeparture
-        delayDeparture = actualArrival - plannedArrival
-        initialDistanceOrigin = vectors[0][position] - originAirport[position]
-        finalDistanceDestination = vectors[-1][position] - destinationAirport[position]
-    Methods:
-        detect_outliers
-        clean_outliers
-        sort_trajectory
-    """
-    ifplId : str
-    callsign : str
-    icao24 : str
-    aerodromeOfDeparture : str
-    aerodromeOfDestination : str
-    date : datetime.date
-    estimatedTakeOffTime : datetime.timestamp
-    estimatedTimeOfArrival : datetime.timestamp
-    actualTakeOffTime : datetime.timestamp
-    actualTimeOfArrival : datetime.timestamp
-    ts_start : datetime.timestamp
-    ts_end : datetime.timestamp
-    airline : str
-    data_source_surveillance : str
-    data_source_flights : str
-    vectors : pd.DataFrame
-    # raw_vectors: pd.DataFrame = vectors.copy()
-
-    attrs = [
+    attribute_list = (
         'ifplId',
         'callsign',
         'icao24',
         'aerodromeOfDeparture',
         'aerodromeOfDestination',
         'date',
+        'airline',
         'estimatedTakeOffTime',
         'estimatedTimeOfArrival',
         'actualTakeOffTime',
         'actualTimeOfArrival',
-        'ts_start',
-        'ts_end',
-        'airline',
+        'flightState',
+        'trajectory_state',
+        'max_tma_rotation',
+        'loop',
+        'holding',
+        'missing_start',
+        'missing_end',
         'data_source_surveillance',
         'data_source_flights',
-    ]
+        'trajectory_status',
+        'first_state_dt',
+        'last_state_dt',
+        'num_vectors',
+        'total_length',
+    )
 
-
-    def __init__(self, trajectoryId, date, state='raw', demo_folder=None):
-        if state == 'raw':
+    def __init__(self, trajectoryId, date, trajectory_state='raw', demo_folder=None):
+        # Static
+        self.ifplId: str
+        self.callsign: str
+        self.icao24: str
+        self.aerodromeOfDeparture: str
+        self.aerodromeOfDestination: str
+        self.date: datetime
+        self.airline: str
+        self.estimatedTakeOffTime: datetime.datetime
+        self.estimatedTimeOfArrival: datetime.datetime
+        self.actualTakeOffTime: datetime.datetime
+        self.actualTimeOfArrival: datetime.datetime
+        self.flightState: str
+        # Description
+        self.trajectory_state: str
+        self.max_tma_rotation: float
+        self.loop: bool
+        self.holding: bool
+        self.missing_start: bool
+        self.missing_end: bool
+        # Process description
+        self.data_source_surveillance: str
+        self.data_source_flights: str
+        self.trajectory_stage: str
+        # Calculated
+        self.first_state_dt: datetime.datetime
+        self.last_state_dt: datetime.datetime
+        self.num_vectors: int
+        self.total_length: float
+        # Positions
+        self.vectors: pd.DataFrame
+        
+        if trajectory_state == 'raw':
             folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}'
-        elif state == 'clean':
+        elif trajectory_state == 'clean':
             folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={date}'
-        elif state == 'demo':
+        elif trajectory_state == 'demo':
             folder = Path(demo_folder)
 
-        self.vectors = pd.read_parquet(folder /  f'vectors.{date}.parquet',
-                                    engine='pyarrow', dtype_backend='pyarrow',
-                                    filters=[('ifplId', '==', trajectoryId)])
+        self.vectors = pd.read_parquet(
+            folder /  f'vectors.{date}.parquet',
+            engine='pyarrow', dtype_backend='pyarrow',
+            filters=[('ifplId', '==', trajectoryId)])
 
-        metadata = pd.read_parquet(folder /  f'flights.{date}.parquet',
-                                 engine='pyarrow', dtype_backend='pyarrow',
-                                 filters=[('ifplId', '==', trajectoryId)]).iloc[0].to_dict()
+        metadata = pd.read_parquet(
+            folder /  f'flights.{date}.parquet',
+            engine='pyarrow', dtype_backend='pyarrow',
+            filters=[('ifplId', '==', trajectoryId)]).iloc[0].to_dict()
 
         for k, v in metadata.items():
             setattr(self, k, v)
-        self.state = state
-
-        self.save_single_tray = False
-
-        # self.ifplId = metadata['ifplId']
-        # self.callsign = metadata['callsign']
-        # self.icao24 = metadata['icao24']
-        # self.aerodromeOfDeparture = metadata['aerodromeOfDeparture']
-        # self.aerodromeOfDestination = metadata['aerodromeOfDestination']
-        # self.plannedDeparture = metadata['estimatedTakeOffTime']
-        # self.plannedArrival = metadata['estimatedTimeOfArrival']
-        # self.actualDeparture = metadata['actualTakeOffTime']
-        # self.actualArrival = metadata['actualTimeOfArrival']
-        # self.airline = metadata['airline']
-        # self.data_source_surveillance = metadata['data_source_surveillance']
-        # self.data_source_flights = metadata['data_source_flights']
-        # self.ts_start = metadata['ts_start']
-        # self.ts_end = metadata['ts_end']
-        # self.trajectory_status = metadata['trajectory_status']
-
-    # def delayArrival(self) -> int:
-    #     return self.actualDeparture - self.plannedDeparture
-    # def delayDeparture(self) -> int:
-    #     return self.actualArrival - self.plannedArrival
-    # def initialDistanceOrigin(self) -> int:
-    #     airport_coord = airports_data[airports_data.id == self.originAirport]
-    #     return haversine_np(self.vectors.iloc[0].latitude, self.vectors.iloc[0].longitude,
-    #                         airport_coord.lat, airport_coord.lon)
-    # def finalDistanceDestination(self) -> int:
-    #     airport_coord = airports_data[airports_data.id == self.destinationAirport]
-    #     return haversine_np(self.vectors.iloc[0].latitude, self.vectors.iloc[0].longitude,
-    #                         airport_coord.lat, airport_coord.lon)
-
-    # def traveled_distance(self, status:Literal['raw','current']) -> float:
-    #     """
-    #     Args:
-    #         status: Whether to calculate current (improved) traveled distance
-    #             vs. raw traveled distance
-    #     """
-    #     data = self.vectors if status == 'current' else self.raw_vectors
-    #     return haversine_np(data.iloc[0:-1].latitude, data.iloc[0:-1].longitude,
-    #                         data.iloc[1:].latitude, data.iloc[1:].longitude)
-
-    def update():
-        '''Update values of attributes based on current vectors.'''
-        # TODO
-
-    def save(self):
-        # TODO: Adapt to using parquet instead of individual jsons
-        folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={self.date}'
-        with open(folder / f'tray.{self.ifplId}.json', 'r', encoding='utf8') as file:
-            old_metadata = json.load(file)
-        metadata = {}
-        for k in old_metadata.keys():
-            metadata[k] = getattr(self, k)
-
-        folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={self.date}'
-        if not folder.exists(): folder.mkdir(parents=True)
-        with open(folder / f'flights.{self.ifplId}.parquet', 'w+', encoding='utf8') as file:
-            json.dump(metadata, file, indent=2, default=utils.custom_json_encoder)
-
-        if self.save_single_tray:
-            self.vectors.to_parquet(paths.NM_TRAJECTORIES_PATH / f'tray.{self.date}.parquet', engine='pyarrow')

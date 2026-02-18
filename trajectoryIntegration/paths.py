@@ -28,7 +28,7 @@ NM_PARQUET_ADRR_PATH = DATA_DIR / 'L1/nmADRR'
 OPENSKY_PARQUET_FLIGHTS_PATH = DATA_DIR / 'L1/openskyFlights'
 OPENSKY_PARQUET_VECTORS_PATH = DATA_DIR / 'L1/openskyVectors'
 TAF_PARQUET_PATH = DATA_DIR / 'L1/taf'
-AIRPORTS_PATH = DATA_DIR / 'L1/airports/airports.parquet'
+AIRPORTS_PATH = DATA_DIR / 'L1/airports'
 
 # L2 - INTEGRATED
 NM_PARQUET_FLIGHTS_PATH = DATA_DIR / 'L2/nmFlights'
@@ -59,3 +59,12 @@ NM_TRAYS_METRICS_L2_PATH = REPORTS_DIR / 'L2_trajectories'
 NM_TRAYS_METRICS_L3_PATH = REPORTS_DIR / 'L3_trajectories'
 INTEGRATION_METRICS_PATH = REPORTS_DIR / 'L2_integration_metrics'
 SORT_TRAJECTORIES_METRICS_PATH = REPORTS_DIR / 'L3_sort_metrics'
+
+def ensure_dir_exists(dir: Path) -> None:
+    """Check the existence of a folder, and create it otherwise. 
+    
+    Args:
+        dir (pathlib.Path): The complete path to the directory. """
+    
+    if not dir.exists():
+        dir.mkdir(parents=True)

@@ -21,6 +21,7 @@ import json
 import datetime
 
 from .. import params, paths, utils
+from ..trajectory_processing.sorting_algorithms import path_length 
 
 # Flight attribute schema for consolidated flight records
 FLIGHT_ATTRIBUTE_NAMES = [
@@ -32,7 +33,7 @@ FLIGHT_ATTRIBUTE_NAMES = [
     'flightType', 'registrationMark', 'ssr', 'totalEstimatedElapsedTime',
     'wakeTurbulenceCategory', 'aircraftType', 'routeLength', ]
 
-def nm_merge_fplan_fdata(date: str) -> None:
+def nm_merge_fplan_fdata(date: str|datetime.date) -> None:
     """Merge Network Manager flight plan and flight data into consolidated flight records.
 
     Combines information from flight plan messages (FPLAN) and flight data messages
@@ -112,12 +113,11 @@ def nm_merge_fplan_fdata(date: str) -> None:
     flights = flights[FLIGHT_ATTRIBUTE_NAMES]
 
     output_dir = paths.NM_PARQUET_FLIGHTS_PATH
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
-    output_file = paths.NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet'
+    paths.ensure_dir_exists(output_dir)
+    output_file = output_dir / f'nm.flights.{date}.parquet'
     flights.to_parquet(output_file, index=False)
 
-def nm_integrate_flight_vectors(date: str,
+def nm_integrate_flight_vectors(date: str|datetime.date,
                                 airports_dep: list|tuple = tuple(),
                                 airports_dest: list|tuple = tuple()) -> None:
     """Integrate Network Manager flights with OpenSky state vectors to construct trajectories.
@@ -154,39 +154,31 @@ def nm_integrate_flight_vectors(date: str,
         - Integration metrics track success rates and data volume at each step
         - Overnight flights require loading vectors from the next day
     """
-
-    integration_metrics = {}
+    
+    if isinstance(date, str):
+        date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
 
     ## Load -------------------------------------------------------------------
 
-    # Flight data
-    filters = [('flightState','in',('TERMINATED','ATC_ACTIVATED','TATC_ACTIVATED'))]
+    # Flights
+    # Only terminated flights
+    filters = [('flightState','=','TERMINATED')]
     if airports_dep:
         filters.append(('aerodromeOfDeparture','in',airports_dep))
     if airports_dest:
-        filters.append(('aerodromeOfDestination','in',airports_dep))
+        filters.append(('aerodromeOfDestination','in',airports_dest))
     flights = pd.read_parquet(
         paths.NM_PARQUET_FLIGHTS_PATH / f'nm.flights.{date}.parquet',
         engine='pyarrow', dtype_backend='pyarrow', filters=filters)
-
-    integration_metrics['num_flights_initial'] = len(flights)
-
-    # Remove return flights (same origin and destination)
+    # Exclude return flights (same origin and destination)
     flights = flights[flights.aerodromeOfDeparture != flights.aerodromeOfDestination]
 
-    integration_metrics['num_flights'] = len(flights)
-    # integration_metrics['returned_flights'] = (
-    #     integration_metrics['num_flights_initial'] - integration_metrics['num_flights'])
-
-    # OpenSky data
-    # Include vectors from next day for flights that cross midnight
-    date_dt =  datetime.datetime.strptime(date, '%Y-%m-%d')
-    date_next_dt = (date_dt + datetime.timedelta(days=1))
-    date_next = date_next_dt.strftime('%Y-%m-%d')
+    # OpenSky vectors
     # Collect parquet files for current date
     file_paths = list(paths.OPENSKY_PARQUET_VECTORS_PATH.glob(f'flightDate={date}/*.parquet'))
     first_day_files = len(file_paths)
-    # Add next day files if they exist (for overnight flights)
+    # Include vectors from next day for flights that cross midnight
+    date_next = (date + datetime.timedelta(days=1))
     if (paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date_next}').exists():
         file_paths += list(paths.OPENSKY_PARQUET_VECTORS_PATH.glob(f'flightDate={date_next}/*.parquet'))
 
@@ -195,9 +187,8 @@ def nm_integrate_flight_vectors(date: str,
     print(f'#       {"Vectors":<15}{"Flights":<15}{"Join vectors":<15}' +
           f'{"% join vec":<18}{"Join flights":<15}{"% join fl":<18}')
 
-    joined_flights_acc = []
     joined_vectors_acc = []
-    integration_metrics['num_vectors'] = 0
+    num_vectors = 0
     unique_icao24_flights = flights.icao24.unique()
 
     # Process each vector file
@@ -216,18 +207,23 @@ def nm_integrate_flight_vectors(date: str,
             flights,
             vectors_icao, #.drop('callsign', axis=1),
             on='icao24', how='inner')
+        columns = vectors_icao.columns.to_list()
+        del vectors_icao
+
         # Filter by temporal overlap: vector must be within flight execution window
         # Apply TIME_EXPANSION tolerance for vectors near takeoff/landing
+        tolerance_threshold = pd.Timedelta(seconds=params.TIME_EXPANSION)
         joined_vectors = joined_vectors[
-            (joined_vectors.timestamp >= joined_vectors.actualTakeOffTime - pd.Timedelta(seconds=params.TIME_EXPANSION)) &
-            (joined_vectors.timestamp <= joined_vectors.actualTimeOfArrival + pd.Timedelta(seconds=params.TIME_EXPANSION))]
-        if len(joined_vectors)>0:
-            # Consolidate missing callsigns in vector data
-            joined_vectors['callsign'] = joined_vectors.callsign_y.combine_first(joined_vectors.callsign_x)
-            # Extract matched vectors with flight identifier
-            joined_vectors = joined_vectors.loc[:, vectors_icao.columns.to_list()+['ifplId']].drop_duplicates()
-            joined_vectors_acc.append(joined_vectors)
-            joined_flights_acc.append(flights[flights.ifplId.isin(joined_vectors.ifplId.drop_duplicates())])
+            (joined_vectors.timestamp >= joined_vectors.actualTakeOffTime - tolerance_threshold) &
+            (joined_vectors.timestamp <= joined_vectors.actualTimeOfArrival + tolerance_threshold)]
+        if len(joined_vectors)==0:
+            continue
+
+        # Consolidate missing callsigns in vector data
+        joined_vectors['callsign'] = joined_vectors.callsign_y.combine_first(joined_vectors.callsign_x)
+        # Extract matched vectors with flight identifier
+        joined_vectors = joined_vectors.loc[:, columns+['ifplId']].drop_duplicates()
+        joined_vectors_acc.append(joined_vectors)
 
         # Merge by callsign
         # vectors_callsign = vectors[vectors.callsign.isin(flights.callsign.unique()) & ~vectors.index.isin(vectors_icao.index)].copy()
@@ -242,76 +238,84 @@ def nm_integrate_flight_vectors(date: str,
         num_vec = num_initial_vectors
         num_flight = len(flights)
         num_joined_vec = len(joined_vectors)
-        num_joined_flight = len(joined_flights_acc[-1])
+        num_joined_flight = len(joined_vectors.ifplId.unique())
         print(f'{idx+1:>3}/{len(file_paths)}  {num_vec:<15}{num_flight:<15}{num_joined_vec:<15}'+
               f'{num_joined_vec/num_vec*100:<18.2f}{num_joined_flight:<15}{num_joined_flight/num_flight*100:<18.2f}')
         # Track vectors from primary date only (not next day)
         if idx<first_day_files:
-            integration_metrics['num_vectors'] += num_vec
+            num_vectors += num_vec
+        else:
+            num_vectors += num_joined_vec
+
+    # If there are no results, terminate
+    if len(joined_vectors_acc)==0:
+        return None
+    
+    joined_vectors = pd.concat(joined_vectors_acc).drop_duplicates()
+    joined_vectors = joined_vectors.sort_values(by=['ifplId', 'timestamp']).reset_index(drop=True)
+    del joined_vectors_acc
+
+    integration_metrics = {}
+    integration_metrics['num_flights'] = len(flights)
+    integration_metrics['num_vectors'] = num_vectors
+    integration_metrics['num_joined_vectors'] = len(joined_vectors)
+    integration_metrics['num_joined_flights'] = len(joined_vectors.ifplId.unique())
+
+    # Remove trajectories with insufficient vectors
+    vector_counts = joined_vectors.groupby('ifplId').size()
+    sufficient_vectors = vector_counts[vector_counts >= params.MIN_VECTOR_NUMBER]
+    joined_vectors = joined_vectors[joined_vectors.ifplId.isin(sufficient_vectors.index)]
+
+    integration_metrics['num_joined_vectors_final'] = len(joined_vectors)
+    integration_metrics['num_joined_flights_final'] = len(sufficient_vectors)
+    integration_metrics['removed_short_trajectories'] = integration_metrics['num_joined_flights'] - len(sufficient_vectors)
+    del sufficient_vectors
+
+    def build_trajectory_metadata(flight_id):
+        flight = flights[flights.ifplId == flight_id]
+        flight_vectors = joined_vectors[joined_vectors.ifplId == flight_id]
+        metadata = dict(
+            date=date,
+            ifplId=flight_id,
+            callsign=flight.callsign.values[0],
+            icao24=flight.icao24.values[0],
+            aerodromeOfDeparture=flight.aerodromeOfDeparture.values[0],
+            aerodromeOfDestination=flight.aerodromeOfDestination.values[0],
+            airline=flight.operator.values[0]
+                    if pd.notna(flight.operator.values[0])
+                    else flight.operatingOperator.values[0],
+            estimatedTakeOffTime=(flight.estimatedTakeOffTime.values[0]),
+            estimatedTimeOfArrival=(flight.estimatedTimeOfArrival.values[0]),
+            actualTakeOffTime=(flight.actualTakeOffTime.values[0]),
+            actualTimeOfArrival=(flight.actualTimeOfArrival.values[0]),
+            num_vectors=len(flight_vectors),
+            total_length=path_length(flight_vectors[['latitude','longitude']].to_numpy('float32')),
+            first_state_dt=flight_vectors.timestamp.min(),
+            last_state_dt=flight_vectors.timestamp.max(),
+            data_source_surveillance='opensky',
+            data_source_flights='nm',
+            flightState=flight.flightState.values[0],
+            trajectory_status='L2_cleaned',
+            trajectory_state='raw',
+        )
+        return metadata
 
     ## Write data ---------------------------------------------------------------------------------
 
-    if len(joined_vectors_acc)>0:
-        joined_vectors = pd.concat(joined_vectors_acc).drop_duplicates()
-        joined_vectors = joined_vectors.sort_values(by=['ifplId', 'timestamp']).reset_index(drop=True)
-        del joined_vectors_acc
+    output_dir = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}'
+    paths.ensure_dir_exists(output_dir)
 
-        integration_metrics['num_joined_vectors'] = len(joined_vectors)
-        integration_metrics['num_joined_flights'] = len(joined_vectors.ifplId.unique())
+    # Write trajectory data
+    file_path = output_dir / f'vectors.{date}.parquet'
+    joined_vectors.to_parquet(file_path, index=False)
+    # Write trajectory metadata
+    metadata = map(build_trajectory_metadata, joined_vectors.ifplId.unique())
+    file_path = output_dir / f'flights.{date}.parquet'
+    pd.DataFrame(metadata).to_parquet(file_path, index=False)
 
-        # Remove trajectories with insufficient vectors
-        vector_counts = joined_vectors.groupby('ifplId').size()
-        sufficient_vectors = vector_counts[vector_counts >= params.MIN_VECTOR_NUMBER]
-        joined_vectors = joined_vectors[joined_vectors.ifplId.isin(sufficient_vectors.index)]
-
-        integration_metrics['num_joined_vectors_final'] = len(joined_vectors)
-        integration_metrics['num_joined_flights_final'] = len(sufficient_vectors)
-        integration_metrics['removed_short_trajectories'] = integration_metrics['num_joined_flights'] - len(sufficient_vectors)
-        del sufficient_vectors
-
-        def get_metadata(flight_id):
-            flight = flights[flights.ifplId == flight_id]
-            flight_vectors = joined_vectors[joined_vectors.ifplId == flight_id]
-            metadata = dict(
-                date=date,
-                ifplId=flight_id,
-                callsign=flight.callsign.values[0],
-                icao24=flight.icao24.values[0],
-                aerodromeOfDeparture=flight.aerodromeOfDeparture.values[0],
-                aerodromeOfDestination=flight.aerodromeOfDestination.values[0],
-                airline=flight.operator.values[0]
-                        if pd.notna(flight.operator.values[0])
-                        else flight.operatingOperator.values[0],
-                estimatedTakeOffTime=(flight.estimatedTakeOffTime.values[0]),
-                estimatedTimeOfArrival=(flight.estimatedTimeOfArrival.values[0]),
-                actualTakeOffTime=(flight.actualTakeOffTime.values[0]),
-                actualTimeOfArrival=(flight.actualTimeOfArrival.values[0]),
-                num_vectores=len(flight_vectors),
-                ts_start=flight_vectors.timestamp.min(),
-                ts_end=flight_vectors.timestamp.max(),
-                data_source_surveillance='opensky',
-                data_source_flights='nm',
-                flightState=flight.flightState.values[0],
-                trajectory_status='L2_cleaned',
-            )
-            return metadata
-
-        folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}'
-        if not folder.exists():
-            folder.mkdir(parents=True)
-        # Write trajectory data
-        file_path = folder / f'vectors.{date}.parquet'
-        joined_vectors.reset_index(drop=True).to_parquet(file_path, index=False)
-        # Write trajectory metadata
-        metadata = list(map(get_metadata, joined_vectors.ifplId.drop_duplicates()))
-        file_path = folder / f'flights.{date}.parquet'
-        pd.DataFrame(metadata).to_parquet(file_path, index=False)
-
-        # Write integration metrics
-        if not paths.INTEGRATION_METRICS_PATH.exists():
-            paths.INTEGRATION_METRICS_PATH.mkdir(parents=True)
-        file_path = paths.INTEGRATION_METRICS_PATH / f'integration.{date}.json'
-        with open(file_path, 'w+', encoding='utf8') as file:
-            json.dump(integration_metrics, file, indent=2, default=utils.custom_json_encoder)
-
-    return None
+    # Write integration metrics
+    output_dir = paths.INTEGRATION_METRICS_PATH
+    paths.ensure_dir_exists(output_dir)
+    file_path = output_dir / f'integration.{date}.json'
+    with open(file_path, 'w+', encoding='utf8') as file:
+        json.dump(integration_metrics, file, indent=2, default=utils.custom_json_encoder)

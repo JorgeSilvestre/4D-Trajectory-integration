@@ -154,8 +154,7 @@ def nm_fplan_process(date: str) -> None:
     fplan = nm_fplan_clean(fplan)
 
     output_dir = paths.NM_PARQUET_FPLAN_PATH
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
+    paths.ensure_dir_exists(output_dir)
     output_file = output_dir / f'nm.fplan.{date}.parquet'
     fplan.to_parquet(output_file, index=False)
 
@@ -193,12 +192,11 @@ def nm_fdata_process(date: str) -> None:
     del data, buffer, chunk
 
     output_dir = paths.NM_PARQUET_FDATA_PATH
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
+    paths.ensure_dir_exists(output_dir)
     output_file = output_dir / f'nm.fdata.{date}.parquet'
     fdata.to_parquet(output_file, index=False)
 
-def _parallelize_nm_fdata_process(str):
+def _process_nm_fdata_chunk(data: pd.DataFrame) -> pd.DataFrame:
     # TODO
     pass
 
@@ -392,8 +390,7 @@ def nm_adrr_process(date: str) -> None:
     data = nm_adrr_clean(data)
 
     output_dir = paths.NM_PARQUET_ADRR_PATH
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
+    paths.ensure_dir_exists(output_dir)
     output_file = output_dir / f'nm.adrr.{date}.parquet'
     data.to_parquet(output_file, index=False)
 
@@ -482,7 +479,6 @@ def opensky_flights_json_to_parquet(date: str) -> None:
     data['flightId'] = data.flightDate.str.replace('-','') + '-' + data.index.astype(str).str.ljust(6, '0')
 
     folder = paths.OPENSKY_PARQUET_FLIGHTS_PATH
-    if not folder.exists():
-        folder.mkdir(parents=True)
+    paths.ensure_dir_exists(folder)
     path = folder / f'os.flights.{date}.parquet'
     data.to_parquet(path, index=False)

@@ -1,4 +1,4 @@
-import time
+import time, datetime
 
 from . import params
 from .data_cleaning import additional as clean_additional
@@ -9,25 +9,29 @@ from .quality_metrics import individual_metrics, trajectory_metrics
 from .trajectory import Trajectory
 from .trajectory_processing.sort_trajectory import (process_trajectories,
                                                     process_trajectory)
+from .utils import get_dates_between
 
 
 def run():
-    # date_start, date_end = '2023-07-01','2023-07-16'
-    # dates = utils.get_dates_between(date_start, date_end)
-    # dates = [x.strftime('%Y-%m-%d') for x in dates]
-    # for date in dates:
-    #     print(date)
 
     date = '2023-07-03'
     month = '2023-07'
 
     # Integration process
-    if True:
+    date_start, date_end = '2023-07-03','2023-07-05'
+    dates = get_dates_between(date_start, date_end)
+    dates = [x.strftime('%Y-%m-%d') for x in dates]
+
+    for date in dates:
+        print(date)
+        pass
+    # if True:
         airport_orig = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
         airport_dest = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
 
         # L1
         # clean_additional.ourairports_airports_process()
+        # flight_plans.nm_adrr_process('2023-06-03')
 
         # individual_metrics.calculate_metrics_openskyVectors(date, state='raw')
         # surveillance.opensky_vectors_process(date)
@@ -44,7 +48,6 @@ def run():
         # individual_metrics.calculate_metrics_fplan(date, 'clean')
         # individual_metrics.calculate_metrics_fdata(date, 'clean')
 
-        # flight_plans.nm_adrr_process(date)
 
         # L2
 
@@ -57,15 +60,15 @@ def run():
         # L3
         # process_trajectories(date)
         trajectory_metrics.calculate_metrics_trajectories(date, 'clean')
-        # integrate_taf.taf_integrate_vectors(date)
+        integrate_taf.taf_integrate_vectors(date)
         pass
 
     # Sort trajectory
     if False:
         # AT02603204
         tray = Trajectory('AT02603928', '2023-07-03', 'raw')
-        res = process_trajectory(tray, 'complete', params.SORT_ALG, False, {}, True, False)
-        pass
+        print(tray.get_attr_list())
+        # res = process_trajectory(tray, 'complete', params.SORT_ALG, False, {}, True, False)
 
     # Time benchmark
     if False:

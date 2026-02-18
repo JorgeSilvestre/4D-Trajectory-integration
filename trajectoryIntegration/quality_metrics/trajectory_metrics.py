@@ -36,9 +36,9 @@ def calculate_metrics_trajectories(date: str, trayType: str = 'raw'):
         res = list(res)
 
 def calculate_metrics_trajectory(trajectory: Trajectory):
-    if trajectory.state == 'raw':
+    if trajectory.trajectory_state == 'raw':
         folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={trajectory.date}'
-    elif trajectory.state == 'clean':
+    elif trajectory.trajectory_state == 'clean':
         folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={trajectory.date}'
     data = trajectory.vectors
 
@@ -95,7 +95,7 @@ def calculate_metrics_trajectory(trajectory: Trajectory):
     if pd.isna(results['last_altitude_before_ground']):
         results['last_altitude_before_ground'] = None
 
-    if trajectory.state == 'raw':
+    if trajectory.trajectory_state == 'raw':
         if not paths.NM_TRAYS_METRICS_L2_PATH.exists():
             paths.NM_TRAYS_METRICS_L2_PATH.mkdir(parents=True)
         with open(paths.NM_TRAYS_METRICS_L2_PATH / f'tray.{trajectory.date}.{trajectory.ifplId}.json', 'w+', encoding='utf8') as file:
@@ -104,7 +104,7 @@ def calculate_metrics_trajectory(trajectory: Trajectory):
             # except TypeError:
             #     print(results)
             #     exit()
-    elif trajectory.state == 'clean':
+    elif trajectory.trajectory_state == 'clean':
         results['sorted_vectors'] = get_resorted_vectors(data)
         results['mean_timestamp_variation'] = get_mean_timestamp_variation(data)
         if not paths.NM_TRAYS_METRICS_L3_PATH.exists():

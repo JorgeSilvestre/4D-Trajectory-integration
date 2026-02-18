@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+import datetime
 
 import pandas as pd
 from tqdm import tqdm
@@ -15,9 +15,9 @@ def taf_current_report(month: str, airports: list = []) -> None:
     """
     input_file = paths.TAF_PARQUET_PATH / f'taf.{month}.parquet'
     if len(airports)>0:
-        taf_records = pd.read_parquet(input_file,
-                            engine='pyarrow', dtype_backend='pyarrow',
-                            filters=[('station_id', 'in', airports)])
+        taf_records = pd.read_parquet(
+            input_file, filters=[('station_id','in',airports)],
+            engine='pyarrow', dtype_backend='pyarrow')
     else:
         taf_records = pd.read_parquet(input_file, engine='pyarrow', dtype_backend='pyarrow')
 
@@ -65,14 +65,16 @@ def taf_current_report(month: str, airports: list = []) -> None:
                                                     .astype('string[pyarrow]'))
 
     output_dir = paths.TAF_INTEGRATED_PATH
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
+    paths.ensure_dir_exists(output_dir)
     output_file = output_dir / f'taf.{month}.parquet'
     data.to_parquet(output_file, index=False)
 
-def taf_integrate_vectors(date: str) -> None:
-    next_day = (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-    prev_day = (datetime.strptime(date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+def taf_integrate_vectors(date: str|datetime.date) -> None:
+    if isinstance(date, str):
+        date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+
+    next_day = date + datetime.timedelta(days=1)
+    prev_day = date - datetime.timedelta(days=1)
 
     file_path = paths.NM_TRAJECTORIES_PATH / f'flightDate={date}/flights.{date}.parquet'
     traj_ids = pd.read_parquet(file_path, columns=['ifplId'], engine='pyarrow').ifplId.to_list()
@@ -80,9 +82,9 @@ def taf_integrate_vectors(date: str) -> None:
 
     result = []
     taf_reports = pd.read_parquet(
-            paths.TAF_INTEGRATED_PATH / f'taf.{date[:-3]}.parquet',
+            paths.TAF_INTEGRATED_PATH / f'taf.{str(date)[:-3]}.parquet',
             engine='pyarrow', dtype_backend='pyarrow',
-            filters=[('date', 'in', (next_day, date, prev_day))])
+            filters=[('date','in',(str(next_day), str(date), str(prev_day)))])
 
     for traj in tqdm(trajectories, desc=f'{date} VECTORS-TAF', ncols=125, total=len(traj_ids)):
         vectors = traj.vectors
@@ -95,8 +97,8 @@ def taf_integrate_vectors(date: str) -> None:
         )
         result.append(traj)
 
-    vectors = pd.concat([traj.vectors for traj in result])
     output_dir = paths.NM_TRAJECTORIES_PATH / f'flightDate={date}'
+    vectors = pd.concat([traj.vectors for traj in result])
     vectors.to_parquet(output_dir / f'vectors.{date}.parquet', index=False)
     taf_reports.to_parquet(output_dir / f'taf.{date}.parquet', index=False)
 

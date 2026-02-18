@@ -35,9 +35,9 @@ def fr24_airports_process() -> None:
         alt='altitude',
     ), axis=1)
 
-    if not paths.AIRPORTS_PATH.parent.exists():
-        paths.AIRPORTS_PATH.parent.mkdir(parents=True)
-    data.to_parquet(paths.AIRPORTS_PATH, engine='pyarrow', index=False)
+    output_dir = paths.AIRPORTS_PATH
+    paths.ensure_dir_exists(output_dir)
+    data.to_parquet(output_dir / 'airports.parquet', index=False)
 
 def ourairports_airports_process() -> None:
     """Convert an OurAirports CSV snapshot into normalized parquet format.
@@ -68,6 +68,6 @@ def ourairports_airports_process() -> None:
     data['latitude'] = data.latitude.astype('float32[pyarrow]')
     data['longitude'] = data.longitude.astype('float32[pyarrow]')
 
-    if not paths.AIRPORTS_PATH.parent.exists():
-        paths.AIRPORTS_PATH.parent.mkdir(parents=True)
-    data.to_parquet(paths.AIRPORTS_PATH, index=False)
+    output_dir = paths.AIRPORTS_PATH
+    paths.ensure_dir_exists(output_dir)
+    data.to_parquet(output_dir / 'airports.parquet', index=False)

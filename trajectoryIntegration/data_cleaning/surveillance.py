@@ -91,8 +91,7 @@ def opensky_vectors_process(date: str) -> None:
     if len(input_files) == 0:
         raise FileNotFoundError
     output_dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
+    paths.ensure_dir_exists(output_dir)
 
     # Parallel
     max_workers = os.cpu_count()
@@ -240,8 +239,7 @@ def vectors_json_to_parquet(date: str) -> None:
 
     input_files = list(paths.OPENSKY_RAW_VECTORS_JSON_PATH.glob(f'flightDate={date}/*.json'))
     output_dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
+    paths.ensure_dir_exists(output_dir)
 
     for file_path in input_files:
         data = []

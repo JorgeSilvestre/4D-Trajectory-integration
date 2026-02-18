@@ -31,13 +31,14 @@ def process_trajectories(date: str) -> None:
     # Write updated metadata
     vectors = [t.vectors for t in result]
     vectors = pd.concat(vectors)
-    folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={date}'
-    if not folder.exists():
-        folder.mkdir(parents=True)
-    path = folder / f'vectors.{date}.parquet'
+    output_dir = paths.NM_TRAJECTORIES_PATH / f'flightDate={date}'
+    paths.ensure_dir_exists(output_dir)
+    path = output_dir / f'vectors.{date}.parquet'
     vectors.to_parquet(path, index=False,)
-    path = folder / f'flights.{date}.parquet'
-    metadata = [{x:getattr(t, x) for x in Trajectory.attrs} for t in result]
+    path = output_dir / f'flights.{date}.parquet'
+    metadata = [{x:getattr(t, x) 
+                 for x in Trajectory.attribute_list if hasattr(t, x)}
+                 for t in result]
     metadata = pd.DataFrame(metadata)
     metadata.to_parquet(path, index=False,)
 
@@ -65,10 +66,9 @@ def process_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     trajectory = fix_altitude(trajectory)
     # trajectory = fix_outliers(trajectory)
 
-    # cleanup
+    # Cleanup
     # trajectory.vectors.drop(['distance_org', 'distance_dst'], axis=1, inplace=True)
-    trajectory.trajectory_status = 'L3_sorted'
-    # trajectory.save()
+    trajectory.trajectory_stage = 'L3_sorted'
 
     folder = paths.SORT_TRAJECTORIES_METRICS_PATH
     if not folder.exists():
@@ -155,6 +155,8 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     max_rotation = calculate_max_rotation(temp.true_track)
     del temp
     metrics['rotation'] = float(max_rotation)
+    metrics['loop'] = bool(max_rotation>params.LOOP_ROTATION)
+    metrics['holding'] = bool(max_rotation>params.HOLDING_ROTATION)
     # If there is a holding, do not sort the last segment
     if check_loop and max_rotation>params.HOLDING_ROTATION:
         alg = {
@@ -194,7 +196,18 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     # print(metrics["initial_distance"], 'Mi ->', metrics["final_distance"],
     #       f'Mi (-{((metrics["initial_distance"]-metrics["final_distance"])/metrics["initial_distance"]):.2%})')
 
+    # Update trajectory metadata
+    trajectory.num_vectors = metrics['final_num_vectors']
+    trajectory.total_length = metrics['final_distance']
+    trajectory.max_tma_rotation = int(metrics['rotation'])
+    trajectory.loop = metrics['loop']
+    trajectory.holding = metrics['holding']
+    trajectory.first_state_dt = trajectory.vectors.timestamp.min()
+    trajectory.last_state_dt = trajectory.vectors.timestamp.max()
+
+    # Retrieve sorting metrics
     trajectory.sorting_metrics = metrics
+
     return trajectory
 
 def sort_trajectory_complete(data: pd.DataFrame, algorithm_conf) -> pd.DataFrame:

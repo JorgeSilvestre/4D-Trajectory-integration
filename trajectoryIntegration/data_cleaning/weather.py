@@ -20,56 +20,6 @@ import pytz
 
 from .. import paths
 
-
-def _extract_temps(temp_records: list) -> list:
-    """Extracts max and min temperatures and their timestamps from temperature records.
-
-    Args:
-        temp_records (list): List of dictionaries containing temperature data.
-
-    Returns:
-        list: A list of four elements: [max_temp, max_timestamp, min_temp, min_timestamp].
-              Elements are pd.NA if not available.
-    """
-    if len(temp_records)==0:
-        return [pd.NA]*4
-    elif len(temp_records)==1:
-        if temp_records[0]['min_temp_c']:
-            return [pd.NA,pd.NA,temp_records[0]['min_temp_c'],temp_records[0]['valid_time']]
-        elif temp_records[0]['max_temp_c']:
-            return [temp_records[0]['max_temp_c'],temp_records[0]['valid_time'],pd.NA,pd.NA]
-        else:
-            return [pd.NA]*4
-    elif len(temp_records)>1:
-        res = [pd.NA]*4
-        for rec in temp_records[:2]:
-            if rec['min_temp_c']:
-                res[2] = rec['min_temp_c']
-                res[3] = rec['valid_time']
-            elif rec['max_temp_c']:
-                res[0] = rec['max_temp_c']
-                res[1] = rec['valid_time']
-        return res
-
-def _extract_sky_conditions(sky_record: list) -> list:
-    """Extracts sky cover, cloud base, and cloud type from sky condition records.
-
-    Args:
-        sky_record (list): List of dictionaries containing sky condition data.
-
-    Returns:
-        list: A list of three elements: [sky_cover, cloud_base_ft_agl, cloud_type].
-              Elements are pd.NA if not available.
-    """
-    if len(sky_record)==0:
-        return [pd.NA]*3
-    elif len(sky_record)>0:
-        return [
-            sky_record[0]['sky_cover'],
-            sky_record[0]['cloud_base_ft_agl'],
-            sky_record[0]['cloud_type'] if sky_record[0]['cloud_type'] else pd.NA
-        ]
-
 def taf_forecast_process(month: str) -> None:
     """Process decoded TAF records for a month and write L1 parquet output.
 
@@ -89,7 +39,7 @@ def taf_forecast_process(month: str) -> None:
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         step = len(data) // (4*max_workers)
         sorted_chunks = list(executor.map(
-            _parallelize_taf_forecast_process,
+            _process_taf_forecast_chunk,
             (data.iloc[i*step:(i+1)*step] for i in range(4*max_workers+1)),
             chunksize=1, buffersize=max_workers))
     data = pd.concat(sorted_chunks, axis=0)
@@ -105,7 +55,7 @@ def taf_forecast_process(month: str) -> None:
     output_file = output_dir / f'taf.{month}.parquet'
     data.to_parquet(output_file, index=False)
 
-def _parallelize_taf_forecast_process(data: pd.DataFrame) -> pd.DataFrame:
+def _process_taf_forecast_chunk(data: pd.DataFrame) -> pd.DataFrame:
     return taf_forecast_clean(taf_forecast_normalize_schema(data))
 
 def taf_forecast_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
@@ -195,3 +145,51 @@ def taf_forecast_clean(data: pd.DataFrame) -> pd.DataFrame:
 
     return data
 
+def _extract_temps(temp_records: list) -> list:
+    """Extracts max and min temperatures and their timestamps from temperature records.
+
+    Args:
+        temp_records (list): List of dictionaries containing temperature data.
+
+    Returns:
+        list: A list of four elements: [max_temp, max_timestamp, min_temp, min_timestamp].
+              Elements are pd.NA if not available.
+    """
+    if len(temp_records)==0:
+        return [pd.NA]*4
+    elif len(temp_records)==1:
+        if temp_records[0]['min_temp_c']:
+            return [pd.NA,pd.NA,temp_records[0]['min_temp_c'],temp_records[0]['valid_time']]
+        elif temp_records[0]['max_temp_c']:
+            return [temp_records[0]['max_temp_c'],temp_records[0]['valid_time'],pd.NA,pd.NA]
+        else:
+            return [pd.NA]*4
+    elif len(temp_records)>1:
+        res = [pd.NA]*4
+        for rec in temp_records[:2]:
+            if rec['min_temp_c']:
+                res[2] = rec['min_temp_c']
+                res[3] = rec['valid_time']
+            elif rec['max_temp_c']:
+                res[0] = rec['max_temp_c']
+                res[1] = rec['valid_time']
+        return res
+
+def _extract_sky_conditions(sky_record: list) -> list:
+    """Extracts sky cover, cloud base, and cloud type from sky condition records.
+
+    Args:
+        sky_record (list): List of dictionaries containing sky condition data.
+
+    Returns:
+        list: A list of three elements: [sky_cover, cloud_base_ft_agl, cloud_type].
+              Elements are pd.NA if not available.
+    """
+    if len(sky_record)==0:
+        return [pd.NA]*3
+    elif len(sky_record)>0:
+        return [
+            sky_record[0]['sky_cover'],
+            sky_record[0]['cloud_base_ft_agl'],
+            sky_record[0]['cloud_type'] if sky_record[0]['cloud_type'] else pd.NA
+        ]

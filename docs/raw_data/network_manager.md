@@ -9,6 +9,8 @@ The raw feed is delivered as deeply nested JSON messages and is processed into t
 - **FPLAN (Flight Plan)**: intent-oriented flight-plan messages.
 - **FDATA (Flight Data)**: execution/status updates with versioned state.
 
+FPLAN and FDATA are linked by `ifplId`,
+
 ---
 
 ## Flight Plan data (FPLAN)
@@ -92,17 +94,54 @@ Each record corresponds to one versioned operational update (`flightDataVersionN
 
 ---
 
-## Relationship between FPLAN and FDATA
+## ADRR Flight Data
 
-FPLAN and FDATA are linked by `ifplId`, but they represent different semantics:
+Eurocontrol makes accesible a repository where researchers can access detailed datasets on aircraft trajectories and related airspace information. Datasets in this repository contain:
+- detailed flight information,
+- flight trajectories (planned and actual),
+- airspace structure, and
+- route network information.
 
-- **FPLAN**: intended operation.
-- **FDATA**: observed operational evolution.
+### Access
 
-Consistency between both datasets is not guaranteed and is resolved in later integration stages.
+The access to these datasets requires the availability of an OneSky Online account, which is subject to approval after requiring the registration.
+
+### Data structure
+
+We only leverage flight data at the moment in this project. Flight data is provided as monthly CSV, containing one line per flight with the following columns:
+
+| Attribute name | Type | Example value | Description |
+|---|---|---|---|
+| ECTL_ID | string | `"261882769"` | Unique numeric identifier for each flight in Eurocontrol PRISME DWH.  |
+| ADEP | string | `"KATL"` | Departure ICAO identifier.  |
+| ADEP Latitude | float64 | `33.63333` | Latitude of departure airport in decimal degrees.  |
+| ADEP Longitude | float64 | `-84.43333` | Longitude of departure airport in decimal degrees.  |
+| ADES | string | `"EIDW"` | Destination ICAO identifier.  |
+| ADES Latitude | float64 | `53.42139` | Latitude of destination airport in decimal degrees.  |
+| ADES Longitude | float64 | `-6.27` | Longitude of destination airport in decimal degrees.  |
+| Filed Off-Block Time | datetime (UTC) | `01-06-2023 00:00:00` | Off-Block Time (UTC) based on the last filed flight plan. |
+| Filed Arrival Time | datetime (UTC) | `01-06-2023 07:35:32` | Time of arrival (UTC) based on the last filed flight plan. |
+| Actual Off-Block Time | datetime (UTC) | `01-06-2023 00:17:00` | Off-Block Time (UTC) based on the ATFM-updated flight plan. The time that an aircraft departs from its parking position. |
+| Actual Arrival Time | datetime (UTC) | `01-06-2023 07:57:13` | Time of arrival (UTC) based on the ATFM-updated flight plan. It is the time at which the aircraft lands at the aerodrome. |
+| AC Type | string | `"A359"` | ICAO aircraft type designator.  |
+| AC Operator | string | `"DAL"` | Three-letter ICAO operator code. If the operator is unknown, not provided in the flight plan the value is "ZZZ".  |
+| AC Registration | string | `"N576DZ"` | Aircraft registration. |
+| ICAO Flight Type | string | `"S"` | ICAO Flight Type: S – Scheduled, N - Non-scheduled commercial operation |
+| Requested FL | float64 | `370.0` | Requested cruising flight level from the flight plan.  |
+| Actual Distance Flown (nm) | int64 | `3508` | Distance flown in nautical miles. |
+
+### Known data issues and limitations
+
+- The data correspond with consolidated flight plans after the flight has ended, so it only contains the last snapshot of the flight plan (without any notion of the changes in the data across the flight) of terminated flights.
+- The data is not exhaustive from a time perspective: only one month out of three is available per year (March, June, September, December).
+- New updates are published with a 2-year delay (e.g. the latest update in 2025 introduced data from 2023).
+- Flight data from this source can only be integrated with surveillance data using the callsign of the flight (which is not always available in OpenSky data), since they do not contain ICAO24 identifiers.
 
 ---
 
 ## References
 
 - EUROCONTROL Network Manager: <https://www.eurocontrol.int/network-manager>
+- EUROCONTROL B2B Reference Manuals FlightServices
+- EUROCONTROL B2B Reference Manuals PublishSubscribeServices
+- ADRR: https://www.eurocontrol.int/dashboard/aviation-data-research

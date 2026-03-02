@@ -23,7 +23,7 @@ def outliers_zscore(data: pd.Series, window, thresh=3) -> pd.Series:
     return m
 
 def fix_altitude(trajectory: Trajectory):
-    data = trajectory.vectors.copy()
+    data = trajectory.state_vectors.copy()
     data['original_altitude'] = data.altitude.copy()
 
     # TODO: Esta operación debería hacerse sobre segmentos individuales evitando los gaps,
@@ -41,13 +41,13 @@ def fix_altitude(trajectory: Trajectory):
     data['altitude'] = interp_values.astype(pd.ArrowDtype(pa.decimal128(6, 0)))
     data['incorrect_altitude'] = incorrect_altitude
 
-    trajectory.vectors = data
+    trajectory.state_vectors = data
     return trajectory
 
 
 def fix_altitude2(trajectory: Trajectory) -> pd.DataFrame:
     # TODO: Use "within continuous segment" logic and delete this method
-    df = trajectory.vectors.copy()
+    df = trajectory.state_vectors.copy()
 
     origin_airport = airports[airports.icao == trajectory.aerodromeOfDeparture].iloc[0]
     destination_airport = airports[airports.icao == trajectory.aerodromeOfDestination].iloc[0]
@@ -110,13 +110,13 @@ def fix_altitude2(trajectory: Trajectory) -> pd.DataFrame:
         results.append(calculate_altitudes(data))
 
     df = pd.concat(results)
-    trajectory.vectors = df
+    trajectory.state_vectors = df
 
     return df
 
 # ONLY ON CONTINUOUS SEGMENTS??
 def detect_outliers(trajectory: Trajectory) -> Trajectory:
-    data = trajectory.vectors.copy()
+    data = trajectory.state_vectors.copy()
     # The first vector is assumed to be correct
     first = data.iloc[0]
     latest = (first.latitude, first.longitude, first.timestamp, first.altitude, first.vspeed)
@@ -156,6 +156,6 @@ def detect_outliers(trajectory: Trajectory) -> Trajectory:
 
     data['is_outlier'] = flags
 
-    trajectory.vectors = data
+    trajectory.state_vectors = data
 
     return trajectory

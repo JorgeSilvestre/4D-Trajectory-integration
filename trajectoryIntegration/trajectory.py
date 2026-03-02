@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import paths, utils
+from . import paths
 
 # TODO Reflejar de alguna forma el estado de la trayectoria o las transformaciones aplicadas
 
@@ -30,21 +30,23 @@ class Trajectory():
         'missing_end',
         'data_source_surveillance',
         'data_source_flights',
-        'trajectory_status',
+        'trajectory_stage',
         'first_state_dt',
         'last_state_dt',
         'num_vectors',
         'total_length',
     )
 
-    def __init__(self, trajectoryId, date, trajectory_state='raw', demo_folder=None):
+    def __init__(self, trajectory_id: str, date: str|datetime.date,
+                 trajectory_state:str ='raw',
+                 demo_folder: bool=None):
         # Static
         self.ifplId: str
         self.callsign: str
         self.icao24: str
         self.aerodromeOfDeparture: str
         self.aerodromeOfDestination: str
-        self.date: datetime
+        self.date: datetime.date
         self.airline: str
         self.estimatedTakeOffTime: datetime.datetime
         self.estimatedTimeOfArrival: datetime.datetime
@@ -68,8 +70,10 @@ class Trajectory():
         self.num_vectors: int
         self.total_length: float
         # Positions
-        self.vectors: pd.DataFrame
-        
+        self.state_vectors: pd.DataFrame
+
+        # TODO: Integrate weather data in the Trajectory class
+
         if trajectory_state == 'raw':
             folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={date}'
         elif trajectory_state == 'clean':
@@ -77,15 +81,15 @@ class Trajectory():
         elif trajectory_state == 'demo':
             folder = Path(demo_folder)
 
-        self.vectors = pd.read_parquet(
+        self.state_vectors = pd.read_parquet(
             folder /  f'vectors.{date}.parquet',
             engine='pyarrow', dtype_backend='pyarrow',
-            filters=[('ifplId', '==', trajectoryId)])
+            filters=[('ifplId', '==', trajectory_id)])
 
         metadata = pd.read_parquet(
             folder /  f'flights.{date}.parquet',
             engine='pyarrow', dtype_backend='pyarrow',
-            filters=[('ifplId', '==', trajectoryId)]).iloc[0].to_dict()
+            filters=[('ifplId', '==', trajectory_id)]).iloc[0].to_dict()
 
         for k, v in metadata.items():
             setattr(self, k, v)

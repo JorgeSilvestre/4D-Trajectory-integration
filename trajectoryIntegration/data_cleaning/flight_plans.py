@@ -1,13 +1,15 @@
-"""Network Manager/OpenSky Flights cleaning pipelines (L0 → L1).
+""" Network Manager/OpenSky Flights cleaning pipelines (L0 → L1).
 
-This module transforms flight-level raw feeds into L1 parquet datasets.
+This module transforms flight-level raw feeds into L1 parquet datasets with
+normalized schema and source-specific cleaning operations.
 
-Implemented pipelines:
+Four different pipelines are implemented:
 
 - `nm_fplan_process`: flattens and cleans Network Manager Flight Plan messages
   (FPLAN), then consolidates one latest snapshot per `ifplId`.
 - `nm_fdata_process`: flattens and cleans Network Manager Flight Data messages
   (FDATA), ordering by `flightDataVersionNr` and retaining the latest version.
+- `nm_adrr_process`: normalizes and cleans the flight data records from ADRR Flights.
 - `opensky_flights_json_to_parquet`: legacy conversion utility for OpenSky
   Flights JSON files (currently outside the core integration flow).
 
@@ -48,7 +50,7 @@ NAME_MAPPING_FPLAN = {
     'ps:FlightPlanMessage.uuid': 'uuid',
 }
 
-# Maps Network Manager Flight Plans API field names to our standardized attribute names
+# Maps Network Manager Flight Data API field names to our standardized attribute names
 NAME_MAPPING_FDATA = {
     'ps:FlightDataMessage.flightData.flightId.id': 'ifplId',
     'ps:FlightDataMessage.timestamp': 'timestamp',
@@ -109,7 +111,7 @@ def flatten_dict(data: list[dict], paths: list[str]) -> list:
     return list(map(extract_attributes, data))
 
 def convert_time_column(column: pd.Series) -> pd.Series:
-    """Convert timestamp-like values to UTC-aware second-resolution datetimes.
+    """ Convert timestamp-like values to UTC-aware second-resolution datetimes.
 
     Input values are parsed using pandas ISO8601 support. If timezone information
     is present, values are converted to UTC. Otherwise, values are interpreted as
@@ -132,43 +134,38 @@ def convert_time_column(column: pd.Series) -> pd.Series:
     return column.dt.as_unit('s')
 
 ### FLIGHT PLANS ----------------------------------------------------------------------------------
-def nm_fplan_process(date: str) -> None:
-    """Process NM Flight Plan (FPLAN) messages for one date.
+
+def nm_fplan_process(date: str|datetime.date) -> None:
+    """ Process NM Flight Plan (FPLAN) messages for one date.
 
     The pipeline flattens nested JSON messages, normalizes the schema, resolves
     multiple message versions per flight plan, and propagates stable attributes
     across updates.
 
     Args:
-        date: Date in ``YYYY-MM-DD`` format.
-
-    Returns:
-        None.
+        date: Date in "YYYY-MM-DD" format.
     """
 
     input_file = paths.NM_JSON_FPLAN_PATH / f'flightDate={date}' / f'flightDate={date}.json'
-
     with open(input_file, 'r', encoding='utf8') as file:
         data = (json.loads(x) for x in file)
         fplan = nm_fplan_normalize_schema(data)
     fplan = nm_fplan_clean(fplan)
 
+    # Write data
     output_dir = paths.NM_PARQUET_FPLAN_PATH
     paths.ensure_dir_exists(output_dir)
     output_file = output_dir / f'nm.fplan.{date}.parquet'
     fplan.to_parquet(output_file, index=False)
 
-def nm_fdata_process(date: str) -> None:
-    """Process NM Flight Data (FDATA) messages for one date.
+def nm_fdata_process(date: str|datetime.date) -> None:
+    """ Process NM Flight Data (FDATA) messages for one date.
 
     Messages are ordered by flight data version number, normalized, and cleaned
     to produce a consolidated snapshot per flight plan.
 
     Args:
-        date: Date in ``YYYY-MM-DD`` format.
-
-    Returns:
-        None.
+        date: Date in "YYYY-MM-DD" format.
     """
 
     data = []
@@ -201,7 +198,7 @@ def _process_nm_fdata_chunk(data: pd.DataFrame) -> pd.DataFrame:
     pass
 
 def nm_fplan_normalize_schema(data: list[dict]) -> pd.DataFrame:
-    """Normalize raw NM FPLAN messages into a typed tabular schema.
+    """ Normalize raw NM FPLAN messages into a typed tabular schema.
 
     The function flattens nested JSON records according to `NAME_MAPPING_FPLAN`,
     renames fields to canonical names, and applies baseline dtypes for temporal
@@ -273,10 +270,9 @@ def nm_fdata_normalize_schema(data: list[dict]) -> pd.DataFrame:
 def nm_fplan_clean(fplan: pd.DataFrame) -> pd.DataFrame:
     """Apply semantic cleaning and version consolidation to normalized FPLAN data.
 
-    Duplicate records (ignoring message ``uuid``) are removed, records are
-    ordered by (``ifplId``, ``timestamp``), key text fields are normalized,
-    selected attributes are forward-filled within each ``ifplId``, and the
-    latest consolidated message per unique record is retained.
+    Duplicate records are removed, records are ordered by (ifplId, timestamp),
+    key text fields are normalized, selected attributes are forward-filled within each
+    ifplId, and the latest consolidated message per unique record is retained.
 
     Args:
         fplan: Normalized FPLAN DataFrame.
@@ -320,10 +316,10 @@ def nm_fplan_clean(fplan: pd.DataFrame) -> pd.DataFrame:
 def nm_fdata_clean(fdata: pd.DataFrame) -> pd.DataFrame:
     """Apply semantic cleaning and version consolidation to normalized FDATA data.
 
-    Duplicate records (ignoring message ``uuid``) are removed, records are
-    ordered by (``ifplId``, ``flightDataVersionNr``), text identifiers are
+    Duplicate records (ignoring message uuid) are removed, records are
+    ordered by (ifplId, flightDataVersionNr), text identifiers are
     normalized, and selected attributes are forward-filled within each
-    ``ifplId`` before retaining the latest consolidated message version.
+    ifplId before retaining the latest consolidated message version.
 
     Args:
         fdata: Normalized FDATA DataFrame.
@@ -372,12 +368,22 @@ NAME_MAPPING_ADRR_FLIGHTS = {
     'ACTUAL ARRIVAL TIME': 'actualTimeOfArrival',
     'AC Type': 'aircraftType',
     'AC Operator': 'operator',
-    'AC Registration': 'registrationMark',
+    'AC Registration': 'callsign',
     'ICAO Flight Type': 'flightType',
     'Actual Distance Flown (nm)': 'routeLength',
 }
 
-def nm_adrr_process(date: str) -> None:
+def adrr_flights_process(date: str|datetime.date) -> None:
+    """ Process Eurocontrol ADRR Flights records for one date.
+
+    The pipeline normalizes the schema, removes duplicated records and persist the results.
+
+    Args:
+        date: Date in "YYYY-MM-DD" format.
+
+    Raises:
+        FileNotFoundError: If no raw data files exist for the specified date.
+    """
     input_files = list((paths.NM_RAW_ADRR_PATH / f'month={date[:-3]}').glob('*.csv'))
     if len(input_files) == 0:
         raise FileNotFoundError
@@ -389,21 +395,35 @@ def nm_adrr_process(date: str) -> None:
     data = nm_adrr_normalize_schema(data)
     data = nm_adrr_clean(data)
 
-    output_dir = paths.NM_PARQUET_ADRR_PATH
+    # Write data
+    output_dir = paths.ADRR_PARQUET_FLIGHTS_PATH
     paths.ensure_dir_exists(output_dir)
-    output_file = output_dir / f'nm.adrr.{date}.parquet'
+    output_file = output_dir / f'adrr.flights.{date}.parquet'
     data.to_parquet(output_file, index=False)
 
 def nm_adrr_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
+    """ Normalize schema and data types of raw Eurocontrol ADRR Flights records.
+
+    The function selects the relevant columns, renames them and apply adequate data types.
+
+    Args:
+        data: Dataframe with raw ADRR Flights records.
+
+    Returns:
+        DataFrame with normalized Flight records and UTC-aware temporal fields.
+    """
+
     # Remove unused columns
     data = data.drop(['ADEP Latitude', 'ADEP Longitude',
                       'ADES Latitude', 'ADES Longitude',
-                      'STATFOR Market Segment', 'Requested FL'], 
+                      'STATFOR Market Segment', 'Requested FL'],
                      axis=1)
-    
+
+    # Rename columns
     data = data.rename(columns=NAME_MAPPING_ADRR_FLIGHTS)
 
-    time_columns = ['estimatedOffBlockTime', 'estimatedTimeOfArrival', 
+    # Convert time columns
+    time_columns = ['estimatedOffBlockTime', 'estimatedTimeOfArrival',
                     'actualOffBlockTime', 'actualTimeOfArrival']
     for column in time_columns:
         data[column] = pd.to_datetime(data[column].sort_values(), format='%d-%m-%Y %T', cache=True)
@@ -412,10 +432,18 @@ def nm_adrr_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 def nm_adrr_clean(data: pd.DataFrame) -> pd.DataFrame:
+    """ Removes duplicate records.
+
+    Args:
+        data: Dataframe with normalized ADRR Flights records.
+
+    Returns:
+        Cleaned and consolidated ADRR Flights dataFrame.
+    """
+
     data = data.drop_duplicates()
 
     return data
-
 
 # OpenSky Flights
 NAME_MAPPING_OPENSKY_FLIGHTS = {
@@ -425,15 +453,15 @@ NAME_MAPPING_OPENSKY_FLIGHTS = {
     'estArrivalAirport': 'destinationAirport',
 }
 
-def opensky_flights_json_to_parquet(date: str) -> None:
+def opensky_flights_json_to_parquet(date: str|datetime.date) -> None:
     """Legacy conversion of OpenSky Flights JSON data to parquet.
 
-    Flights are assigned to the partition of their ``lastSeen`` day. To capture
+    Flights are assigned to the partition of their lastSeen day. To capture
     flights spanning midnight, records from the target date and previous date are
     loaded before temporal filtering.
 
     Args:
-        date: Target date in ``YYYY-MM-DD`` format.
+        date: Target date in YYYY-MM-DD format.
 
     Returns:
         None.

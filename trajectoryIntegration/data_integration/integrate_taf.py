@@ -87,7 +87,7 @@ def taf_integrate_vectors(date: str|datetime.date) -> None:
             filters=[('date','in',(str(next_day), str(date), str(prev_day)))])
 
     for traj in tqdm(trajectories, desc=f'{date} VECTORS-TAF', ncols=125, total=len(traj_ids)):
-        vectors = traj.vectors
+        vectors = traj.state_vectors
         station_reports = taf_reports[taf_reports.station_id == traj.aerodromeOfDestination]
 
         vectors['forecast'] = pd.cut(

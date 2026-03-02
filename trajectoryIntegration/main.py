@@ -14,7 +14,7 @@ from .utils import get_dates_between
 
 def run():
 
-    date = '2023-07-03'
+    date = '2023-06-03'
     month = '2023-07'
 
     # Integration process
@@ -22,16 +22,16 @@ def run():
     dates = get_dates_between(date_start, date_end)
     dates = [x.strftime('%Y-%m-%d') for x in dates]
 
-    for date in dates:
+    # for date in dates:
+        # pass
+    if True:
         print(date)
-        pass
-    # if True:
         airport_orig = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
         airport_dest = ['EHAM', 'EDDF', 'LIRF', 'LFPG', 'LGAV', 'EKCH', 'EGLL', 'LEMD']
 
         # L1
         # clean_additional.ourairports_airports_process()
-        # flight_plans.nm_adrr_process('2023-06-03')
+        flight_plans.adrr_flights_process(date)
 
         # individual_metrics.calculate_metrics_openskyVectors(date, state='raw')
         # surveillance.opensky_vectors_process(date)
@@ -53,14 +53,15 @@ def run():
 
         # integrate_nm_vectors.nm_merge_fplan_fdata(date)
         # integrate_nm_vectors.nm_integrate_flight_vectors(date, airport_orig, airport_dest)
+        integrate_nm_vectors.adrr_integrate_flight_vectors(date)
         # trajectory_metrics.calculate_metrics_trajectories(date, 'raw')
 
         # integrate_taf.taf_current_report(month, set(airport_orig + airport_dest))
 
         # L3
         # process_trajectories(date)
-        trajectory_metrics.calculate_metrics_trajectories(date, 'clean')
-        integrate_taf.taf_integrate_vectors(date)
+        # trajectory_metrics.calculate_metrics_trajectories(date, 'clean')
+        # integrate_taf.taf_integrate_vectors(date)
         pass
 
     # Sort trajectory

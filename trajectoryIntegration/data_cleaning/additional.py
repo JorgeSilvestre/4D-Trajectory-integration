@@ -1,9 +1,9 @@
-"""Cleaning utilities for auxiliary static datasets (L0 → L1).
+""" Cleaning pipelines for auxiliary static datasets (L0 → L1).
 
 This module currently provides airport reference ingestion from two raw sources:
 
-- `fr24_airports_process`: JSON snapshot to parquet.
 - `ourairports_airports_process`: CSV snapshot (filtered to large airports) to parquet.
+- `fr24_airports_process`: JSON snapshot to parquet.
 
 Both utilities normalize geospatial/elevation fields and persist to the common
 airport L1 parquet path used by downstream enrichment steps.
@@ -14,30 +14,6 @@ import json
 import pandas as pd
 
 from .. import paths
-
-def fr24_airports_process() -> None:
-    """Convert FlightRadar24 airport JSON data into normalized parquet format.
-
-    Reads a local JSON snapshot, normalizes geospatial column names, and writes
-    the result to the common airport parquet target path.
-
-    Returns:
-        None.
-    """
-    with open(paths.AIRPORTS_RAW_PATH / 'airports.json', 'r', encoding='utf8') as file:
-        data = json.load(file)['rows']
-    data = pd.DataFrame.from_dict(data)
-    data['alt'] = data.alt.astype(int)
-
-    data = data.rename(dict(
-        lat='latitude',
-        lon='longitude',
-        alt='altitude',
-    ), axis=1)
-
-    output_dir = paths.AIRPORTS_PATH
-    paths.ensure_dir_exists(output_dir)
-    data.to_parquet(output_dir / 'airports.parquet', index=False)
 
 def ourairports_airports_process() -> None:
     """Convert an OurAirports CSV snapshot into normalized parquet format.
@@ -71,3 +47,28 @@ def ourairports_airports_process() -> None:
     output_dir = paths.AIRPORTS_PATH
     paths.ensure_dir_exists(output_dir)
     data.to_parquet(output_dir / 'airports.parquet', index=False)
+
+def fr24_airports_process() -> None:
+    """Convert FlightRadar24 airport JSON data into normalized parquet format.
+
+    Reads a local JSON snapshot, normalizes geospatial column names, and writes
+    the result to the common airport parquet target path.
+
+    Returns:
+        None.
+    """
+    with open(paths.AIRPORTS_RAW_PATH / 'airports.json', 'r', encoding='utf8') as file:
+        data = json.load(file)['rows']
+    data = pd.DataFrame.from_dict(data)
+    data['alt'] = data.alt.astype('int32[pyarrow]')
+
+    data = data.rename(dict(
+        lat='latitude',
+        lon='longitude',
+        alt='altitude',
+    ), axis=1)
+
+    output_dir = paths.AIRPORTS_PATH
+    paths.ensure_dir_exists(output_dir)
+    data.to_parquet(output_dir / 'airports.parquet', index=False)
+

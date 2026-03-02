@@ -29,7 +29,7 @@ def process_trajectories(date: str) -> None:
     #     result.append(_process_trajectory_params(tray))
 
     # Write updated metadata
-    vectors = [t.vectors for t in result]
+    vectors = [t.state_vectors for t in result]
     vectors = pd.concat(vectors)
     output_dir = paths.NM_TRAJECTORIES_PATH / f'flightDate={date}'
     paths.ensure_dir_exists(output_dir)
@@ -85,7 +85,7 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     ### Metrics ###############################################################
     ts_start = time.time()
     metrics = {}
-    data = trajectory.vectors.copy()
+    data = trajectory.state_vectors.copy()
 
     metrics['initial_num_vectors'] = len(data)
     metrics['initial_distance'] = float(path_length(data[['latitude','longitude']].to_numpy(dtype='float32')))
@@ -186,7 +186,7 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     del ground_org, ground_dst
 
     data['new_index'] = range(len(data))
-    trajectory.vectors = data
+    trajectory.state_vectors = data
 
     metrics['final_distance'] = float(path_length(data[['latitude','longitude']].to_numpy(dtype='float32')))
     metrics['final_num_vectors'] = len(data)
@@ -202,8 +202,8 @@ def sort_trajectory(trajectory: Trajectory, mode, algorithm, presort,
     trajectory.max_tma_rotation = int(metrics['rotation'])
     trajectory.loop = metrics['loop']
     trajectory.holding = metrics['holding']
-    trajectory.first_state_dt = trajectory.vectors.timestamp.min()
-    trajectory.last_state_dt = trajectory.vectors.timestamp.max()
+    trajectory.first_state_dt = trajectory.state_vectors.timestamp.min()
+    trajectory.last_state_dt = trajectory.state_vectors.timestamp.max()
 
     # Retrieve sorting metrics
     trajectory.sorting_metrics = metrics
@@ -273,7 +273,7 @@ def calculate_max_rotation(tracks: pd.Series):
     return max(turn_right, turn_left)
 
 def identify_moved_vectors(trajectory: Trajectory):
-    data = trajectory.vectors.copy()
+    data = trajectory.state_vectors.copy()
 
     # acc para usarlo como objeto mutable y evitar el uso de una variable global
     # [found, missing]
@@ -282,7 +282,7 @@ def identify_moved_vectors(trajectory: Trajectory):
     data['is_moved'] = (data[['new_index','old_index']].astype('Int32[pyarrow]')
                                                          .apply(_is_moved, args=[acc], axis=1))
 
-    trajectory.vectors = data
+    trajectory.state_vectors = data
     return trajectory
 
 def _is_moved(x:pd.DataFrame, acc_list: list, show_log: bool = False) -> bool:
@@ -341,7 +341,7 @@ def _is_moved(x:pd.DataFrame, acc_list: list, show_log: bool = False) -> bool:
     return reordenado
 
 def recalculate_timestamp(trajectory: Trajectory) -> Trajectory:
-    data = trajectory.vectors.copy()
+    data = trajectory.state_vectors.copy()
     data['original_timestamp'] = data['timestamp'].copy()
 
     positions = data[['latitude','longitude']].to_numpy(dtype='float32')
@@ -356,6 +356,6 @@ def recalculate_timestamp(trajectory: Trajectory) -> Trajectory:
     data['timestamp'] = pd.to_datetime(interp_values, unit='ms')
     data['timestamp'] = data.timestamp.dt.tz_localize('utc')
 
-    trajectory.vectors = data
+    trajectory.state_vectors = data
 
     return trajectory

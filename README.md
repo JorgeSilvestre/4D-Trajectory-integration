@@ -23,9 +23,9 @@ The trajectoryIntegration package is the core of this repository, which contains
 
 - `trajectoryIntegration`: Core pipeline.
 - `docs`: Technical documentation of the ETL pipeline.
-- `test`: Several tests for the developed code.
 - `data`: 
 - `reports`: 
+- `test`: Several tests for the developed code.
 - `visualization`: Contains several scripts to create Streamlit dashboards that enable data and quality metrics exploration and analysis.
 
 <!-- → -->

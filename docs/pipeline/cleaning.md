@@ -37,19 +37,18 @@ L1 guarantees per-source consistency through:
 - Remove rows with missing `icao24` or invalid/missing geospatial coordinates.
 - Remove duplicates on (`icao24`, `time_position`, `latitude`, `longitude`).
 - Normalize `icao24`/`callsign` to uppercase.
-- Trim callsign spaces, remove callsigns containing embedded blanks, and convert empty strings to null.
+- Trim `callsign` spaces, remove callsigns containing embedded blanks, and convert empty strings to null.
 - Sort by (`icao24`, `time_position`).
 
-### Derived columns and output contract
+### Derived columns
 
-- `timestamp := time_position`
-- `altitude := geo_altitude`
-- Output fixed column order:
-  `timestamp`, `icao24`, `callsign`, `time_position`, `last_contact`, `latitude`, `longitude`, `altitude`, `baro_altitude`, `geo_altitude`, `velocity`, `vertical_rate`, `true_track`, `on_ground`, `squawk`.
+- `time_position` is set as the reference time data by copying and renaming it as `timestamp`. 
+- The same goes for `geo_altitude`, which is copied and renamed as `altitude`.
+
 
 ---
 
-## Network Manager — Flight Plans (`flight_plans.py`, FPLAN)
+## Network Manager — Flight Plans (`flight_plans.py`)
 
 ### Schema normalization
 
@@ -69,7 +68,7 @@ L1 guarantees per-source consistency through:
 
 ---
 
-## Network Manager — Flight Data (`flight_plans.py`, FDATA)
+## Network Manager — Flight Data (`flight_plans.py`)
 
 ### Schema normalization
 
@@ -120,13 +119,3 @@ L1 guarantees per-source consistency through:
 
 - Read airport rows from JSON snapshot.
 - Rename geospatial/elevation fields to canonical names.
-- Persist normalized parquet to airport reference path.
-
----
-
-## Relationship with later stages
-
-- **L2 (Integration)** joins cleaned source-local datasets.
-- **L3 (Trajectories)** applies trajectory-level temporal/spatial consistency processing.
-
-Keeping L1 source-local improves auditability and fault isolation before integration.

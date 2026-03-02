@@ -1,25 +1,19 @@
-"""OpenSky surveillance cleaning pipeline (L0 → L1).
+""" OpenSky surveillance cleaning pipeline (L0 → L1).
 
-This module converts raw OpenSky state vectors into the project L1 schema used
-by downstream integration and trajectory reconstruction stages.
+This module converts raw OpenSky from raw parquet files extracted from ADAPT
+Gold Zone into L1 OpenSky state vectors with normalized schema and source-specific
+cleaning operations.
 
-Processing is organized into three core steps:
+Processing is organized into three steps:
 
-1. Schema normalization (`opensky_vectors_normalize_schema`):
-   - drop unused OpenSky attributes,
-   - rename fields to the internal canonical names,
-   - enforce selected PyArrow-backed dtypes,
-   - localize temporal fields to UTC and truncate them to second resolution.
-2. Semantic cleaning (`opensky_vectors_clean`):
-   - remove rows with missing/invalid geospatial coordinates,
-   - remove duplicate position reports,
-   - normalize text identifiers (`icao24`, `callsign`),
-   - compute derived L1 attributes (`timestamp`, `altitude`).
-3. Output persistence (`opensky_vectors_process`):
-   - preserve input partitioning by `flightDate=YYYY-MM-DD`,
-   - write cleaned parquet files to the L1 directory.
+1. `opensky_vectors_normalize_schema`: Schema normalization by dropping unused columns,
+   renaming columns with standard names and transforming data types.
+2. `opensky_vectors_clean`: Semantic cleaning by removing or transforming incorrect
+   state vectors.
+3. `opensky_vectors_process`: Orchestrate parallel processing and persistence.
 
-The module also keeps a deprecated JSON-to-parquet utility for legacy datasets.
+The module also keeps a deprecated JSON-to-parquet utility for legacy datasets
+(data extracted from the original source - OpenSky Network API).
 """
 
 import json
@@ -63,28 +57,23 @@ VECTOR_ATTRIBUTE_NAMES = [
     # Removed: spi, sensors, position_source, origin_country
 ]
 
-def opensky_vectors_process(date: str) -> None:
-    """
-    Processes raw OpenSky state vectors for a given date into L1 format.
+def opensky_vectors_process(date: str, parallel: bool=True) -> None:
+    """ Process raw OpenSky state vectors for a given date into L1 format.
 
     This function implements the L0 → L1 processing pipeline for OpenSky surveillance data.
     For the specified date:
-
     - reads raw OpenSky state vectors (L0) from disk,
     - normalizes the schema and data types,
     - applies semantic cleaning and validation,
     - writes cleaned state vectors (L1) back to disk.
-
     The output preserves the original file partitioning by date.
 
     Args:
-        date (str): Flight date to be processed, formatted as 'YYYY-MM-DD'.
+        date: Flight date to be processed, formatted as 'YYYY-MM-DD'.
+        parallel: Whether to process the data in parallel or sequentially.
 
     Raises:
         FileNotFoundError: If no raw data files exist for the specified date.
-
-    Returns:
-        None
     """
 
     input_files = list(paths.OPENSKY_RAW_VECTORS_PATH.glob(f'flightDate={date}/*.parquet'))
@@ -93,45 +82,48 @@ def opensky_vectors_process(date: str) -> None:
     output_dir = paths.OPENSKY_PARQUET_VECTORS_PATH / f'flightDate={date}'
     paths.ensure_dir_exists(output_dir)
 
-    # Parallel
-    max_workers = os.cpu_count()
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+    # Parallel computation
+    if parallel:
+        max_workers = os.cpu_count()
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            for file_path in tqdm(input_files, desc=f'{date} VECTORS | Clean  ', ncols=125, disable=False):
+                data = pd.read_parquet(file_path, engine='pyarrow', dtype_backend='pyarrow')
+                # Data is divided in (4*n_cores) chunks to distribute the computation
+                step = len(data) // (4*max_workers)
+                sorted_chunks = list(executor.map(
+                    _process_opensky_vectors_chunk,
+                    (data.iloc[i*step:(i+1)*step] for i in range(4*max_workers+1)),
+                    chunksize=1, buffersize=max_workers))
+                # Write results
+                data = pd.concat(sorted_chunks, axis=0)
+                data.to_parquet(output_dir / file_path.name, index=False)
+    # Sequential computation
+    else:
         for file_path in tqdm(input_files, desc=f'{date} VECTORS | Clean  ', ncols=125, disable=False):
             data = pd.read_parquet(file_path, engine='pyarrow', dtype_backend='pyarrow')
-            step = len(data) // (4*max_workers)
-            sorted_chunks = list(executor.map(
-                _process_opensky_vectors_chunk,
-                (data.iloc[i*step:(i+1)*step] for i in range(4*max_workers+1)),
-                chunksize=1, buffersize=max_workers))
-            data = pd.concat(sorted_chunks, axis=0)
+            data = opensky_vectors_normalize_schema(data)
+            data = opensky_vectors_clean(data)
+            # Write results
             data.to_parquet(output_dir / file_path.name, index=False)
 
-    # Sequential
-    # for file_path in tqdm(input_files, desc=f'{date} VECTORS | Clean  ', ncols=125, disable=False):
-    #     data = pd.read_parquet(file_path, engine='pyarrow', dtype_backend='pyarrow')
-    #     data = opensky_vectors_normalize_schema(data)
-    #     data = opensky_vectors_clean(data)
-    #     data.to_parquet(output_dir / file_path.name, index=False)
-
 def _process_opensky_vectors_chunk(data: pd.DataFrame) -> pd.DataFrame:
+    """ Utility function to enable multiprocessing. """
     return opensky_vectors_clean(opensky_vectors_normalize_schema(data))
 
 def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
-    """Normalize schema and data types of raw OpenSky state vectors.
+    """ Normalize schema and data types of raw OpenSky state vectors.
 
-    Performs structural normalization by:
-    - Removing unused OpenSky attributes (sensors, spi, position_source, origin_country)
-    - Renaming columns to internal naming convention
-    - Enforcing PyArrow-backed pandas dtypes
-    - Converting nanosecond timestamps to timezone-aware datetime objects (UTC)
+    Performs structural normalization:
+    - Remove unused OpenSky attributes (sensors, spi, position_source, origin_country)
+    - Rename columns to internal naming convention
+    - Enforce PyArrow-backed pandas dtypes
+    - Convert nanosecond timestamps to timezone-aware datetime objects (UTC)
 
     Args:
-        data: Raw OpenSky state vectors from L0 storage. Expected columns include
-            'hexid', 'time_stamp', 'track', etc. (see NAME_MAPPING_OPENSKY).
+        data: Dataframe with raw OpenSky state vectors from L0 storage.
 
     Returns:
-        State vectors with normalized schema. Timestamps are UTC-aware at
-        second resolution and selected fields use PyArrow-backed dtypes.
+        State vectors with normalized schema.
     """
 
     # Remove unused columns
@@ -141,11 +133,10 @@ def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     data = data.rename(columns=NAME_MAPPING_OPENSKY)
 
     # Data types
-    # Many attributes are already ingested from ADAPT in appropriate data types
+    # Most attributes are already ingested from ADAPT in appropriate data types
     # data['icao24'] = data.icao24.astype('string[pyarrow]')
     # data['callsign'] = data.callsign.astype('string[pyarrow]')
     data['squawk'] = data.squawk.astype('string[pyarrow]')
-
     # data['longitude'] = data.longitude.astype('Float32[pyarrow]')
     # data['latitude'] = data.latitude.astype('Float32[pyarrow]')
     # data['baro_altitude'] = data.baro_altitude.astype('Float32[pyarrow]')
@@ -153,38 +144,34 @@ def opensky_vectors_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:
     # data['true_track'] = data.true_track.astype('Float32[pyarrow]')
     # data['velocity'] = data.velocity.astype('Float32[pyarrow]')
     # data['vertical_rate'] = data.vertical_rate.astype('Float32[pyarrow]')
-
     # data['on_ground'] = data.on_ground.astype('bool[pyarrow]')
 
-    # The provided timestamps were converted to nanoseconds since epoch. They are converted to
-    # time-zone aware objects.
+    # The provided timestamps were converted to nanoseconds since epoch. Here they are converted to
+    # time-zone aware objects with seconds as time unit.
     data['time_position'] = data.time_position.dt.tz_localize(pytz.UTC).dt.as_unit('s')
     data['last_contact'] = data.last_contact.dt.tz_localize(pytz.UTC).dt.as_unit('s')
 
     return data
 
 def opensky_vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Applies semantic cleaning to normalized OpenSky state vectors.
+    """ Apply semantic cleaning to normalized OpenSky state vectors.
 
     This function removes invalid or inconsistent state vectors and enforces
-    basic physical and formatting constraints. Specifically:
-
-    - removal of vectors with missing or invalid latitude/longitude,
-    - filtering of positions outside valid geographic bounds,
-    - removal of duplicated state vectors per aircraft and timestamp,
+    basic physical and formatting constraints:
+    - remove vectors with missing or invalid latitude/longitude,
+    - filter positions outside valid geographic bounds,
+    - remove duplicated state vectors per aircraft and timestamp,
     - normalization of aircraft identifiers (ICAO24, callsign),
-    - filtering of callsigns containing embedded blanks,
+    - filter callsigns containing embedded blanks,
     - temporal ordering of state vectors per aircraft,
     - construction of derived attributes required at L1 level.
-
     The resulting dataset represents OpenSky L1 state vectors.
 
     Args:
-        data (pd.DataFrame): Normalized OpenSky state vectors.
+        data: Dataframe with normalized OpenSky state vectors.
 
     Returns:
-        pd.DataFrame: Cleaned and ordered OpenSky state vectors (L1).
+        Cleaned and ordered OpenSky state vectors (L1).
     """
 
     # Remove vectors with null or incorrect values
@@ -211,10 +198,10 @@ def opensky_vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
     # Define NA value for text attributes
     data['callsign'] = data.callsign.replace('', pd.NA)
 
-    # Sort vectors
+    # Sort state vectors
     data = data.sort_values(by=['icao24','time_position'])
 
-    # Add columns
+    # Derived columns
     # Use latest position time as the state vector timestamp
     data['timestamp'] = data.time_position.copy()
     # Use geometric altitude as default altitude
@@ -231,7 +218,7 @@ def opensky_vectors_clean(data: pd.DataFrame) -> pd.DataFrame:
 # Deprecated
 # OpenSky vectors are already in parquet format
 def vectors_json_to_parquet(date: str) -> None:
-    """Parse OpenSky state vectors from a JSON file and write into a parquet file
+    """ Parse OpenSky state vectors from a JSON file and write into a parquet file
 
     Args:
         date: String with a date in format 'YYYY-MM-DD'

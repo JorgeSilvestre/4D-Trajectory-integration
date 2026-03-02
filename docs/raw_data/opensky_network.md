@@ -23,18 +23,18 @@ Each state vector represents one aircraft observation. The main attributes used 
 | Attribute name  | Data type | Example value | Description                                      |
 | --------------- | --------- | ------------- | ------------------------------------------------ |
 | `icao24`        | string    | `"3451A2"`    | ICAO 24-bit aircraft address.                    |
-| `callsign`      | string    |               | Aircraft callsign, when available.               |
+| `callsign`      | string    | `"AEE61CG"`   | Aircraft callsign, when available.               |
 | `time_position` | integer   | `1672531200`  | UNIX timestamp of the latest known position.     |
-| `last_contact`  | integer   |               | UNIX timestamp of the latest received message.   |
+| `last_contact`  | integer   | `1672531200`  | UNIX timestamp of the latest received message.   |
 | `latitude`      | float     | `40.4719`     | Latitude in decimal degrees.                     |
 | `longitude`     | float     | `-3.5626`     | Longitude in decimal degrees.                    |
 | `baro_altitude` | float     | `9144.0`      | Barometric altitude (meters).                    |
-| `geo_altitude`  | float     |               | Geometric altitude (feet).                     |
+| `geo_altitude`  | float     | `32456`       | Geometric altitude (feet).                     |
 | `velocity`      | float     | `230.5`       | Ground speed (m/s).                              |
 | `true_track`    | float     | `275.3`       | True track angle (degrees).                      |
 | `vertical_rate` | float     | `-7.6`        | Vertical rate (m/s).                             |
 | `on_ground`     | boolean   | `false`       | Ground status flag.                              |
-| `squawk`        | string    |               | Transponder squawk code.                         |
+| `squawk`        | string    | `7700`        | Transponder squawk code.                         |
 
 ### Known data issues and limitations
 

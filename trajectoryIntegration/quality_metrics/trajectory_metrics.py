@@ -40,7 +40,7 @@ def calculate_metrics_trajectory(trajectory: Trajectory):
         folder = paths.NM_TRAJECTORIES_RAW_PATH / f'flightDate={trajectory.date}'
     elif trajectory.trajectory_state == 'clean':
         folder = paths.NM_TRAJECTORIES_PATH / f'flightDate={trajectory.date}'
-    data = trajectory.vectors
+    data = trajectory.state_vectors
 
     results = {}
     results['ifplId'] = trajectory.ifplId

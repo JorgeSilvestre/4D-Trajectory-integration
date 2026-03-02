@@ -9,22 +9,18 @@ The cleaning layer includes utilities to generate an airport reference parquet f
 
 Both are source-local L0→L1 transformations used to provide static airport metadata for enrichment stages.
 
----
-
 ## OurAirports
-
-### Description
 
 OurAirports is a community-maintained open dataset with worldwide airport metadata.
 
 ### Access
 
-Public download: <https://ourairports.com>
+Public download: <https://ourairports.com>.
 
 ### Data structure (raw snapshot)
 
 | Attribute name | Type | Example value | Description |
-|---|---|---|---|
+|---|---|:-|---|
 | `ident` | string | `"LEMD"` | Airport identifier. |
 | `type` | string | `"large_airport"` | Airport category used for filtering. |
 | `icao_code` | string | `"LEMD"` | ICAO airport code. |
@@ -52,11 +48,7 @@ Public download: <https://ourairports.com>
 - Community curation implies heterogeneous data quality.
 - Identifier completeness varies by region/airport class.
 
----
-
 ## FlightRadar24 airports snapshot
-
-### Description
 
 FR24 airport data is stored as JSON rows and normalized to parquet as an alternative static source.
 
@@ -84,3 +76,7 @@ FR24 airport data is stored as JSON rows and normalized to parquet as an alterna
 
 - Snapshot freshness depends on manual/local data refresh cadence.
 - Field semantics are source-dependent and should be validated when mixed with other airport catalogs.
+
+---
+
+## Airline reference datasets

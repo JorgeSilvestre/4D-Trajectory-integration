@@ -12,11 +12,29 @@ Each level is reflected consistently in both the filesystem layout and the codeb
 
 ```bash
 project_root/
+├── trajectoryIntegration/ # Core processing pipelines
 ├── data/                  # All datasets, organized by maturity level (L0–L3)
 ├── reports/               # Quality metrics and logs
-├── docs/                  # Project documentation
-└── trajectoryIntegration/ # Core processing pipelines
+└── docs/                  # Project documentation
 ```
+---
+
+## Package directory (`trajectoryIntegration/`)
+
+```bash
+project_root/
+├── data_cleaning/         # Data cleaning modules (L0 → L1)
+├── data_extraction/       # Data extraction modules (sources → L0)
+├── data_integration/      # Data cleaning modules (L1 → L2)
+├── quality_metrics/       # Data quality metrics calculation modules
+├── trajectory_processing/ # Trajectory cleaning modules (L2 → L3)
+├── params.py       # Parameter definitions 
+├── paths.py        # Files and folders path definitions 
+├── trajectory.py   # Trajectory class 
+└── utils.py        # Common utilities for all modules 
+```
+
+---
 
 ## Data directory (`data/`)
 
@@ -31,46 +49,35 @@ No cleaning, normalization or semantic consolidation is applied at this stage.
 data/L0/
 ├── nmFPlan/            # Network Manager Flight Plan messages (JSON)
 ├── nmFData/            # Network Manager Flight Data messages (JSON)
+├── nmADRR/             # Eurocontrol ADRR Flights (CSV)
 ├── openskyFlights/     # OpenSky aggregated flight events (JSON)
 ├── openskyVectorsJson/ # OpenSky raw state vectors (JSON)
 ├── openskyVectors/     # OpenSky raw state vectors (parquet)
-├── taf/                # Terminal Aerodrome Forecasts
-├── airports/           # Airport reference data
-├── runways/            # Runway reference data
-└── airlines/           # Airline reference data
+├── taf/                # Terminal Aerodrome Forecasts (parquet)
+├── airports/           # Airport reference data (CSV)
+├── runways/            # Runway reference data (CSV)
+└── airlines/           # Airline reference data (CSV)
 ```
-
----
 
 ### L1 — Cleaned individual sources (`data/L1/`)
 
-L1 corresponds to **source-level cleaned data**.
-At this level, each dataset is processed independently:
-
-- schema normalization
-- basic filtering and validation
-- semantic consolidation within a single source
+L1 corresponds to **source-level cleaned data** in parquet file format.
+At this level, each dataset is processed independently: schema normalization, basic filtering and validation, and semantic consolidation within a single source.
 
 ```bash
 data/L1/
-├── nmFPlan/        # Cleaned NM Flight Plans (parquet)
-├── nmFData/        # Cleaned NM Flight Data (parquet)
-├── openskyFlights/ # Cleaned OpenSky flight events
+├── nmFPlan/        # Cleaned NM Flight Plans
+├── nmFData/        # Cleaned NM Flight Data
+├── nmADRR/         # Cleaned Eurocontrol ADRR Flights
+├── openskyFlights/ # Cleaned OpenSky flights
 ├── openskyVectors/ # Cleaned OpenSky state vectors
-├── taf/            # Processed TAF data
-└── airports/
-    └── airports.parquet # Normalized airport reference dataset
+├── taf/            # Processed TAF data (monthly)
+└── airports/       # Normalized airport reference dataset
 ```
-
----
 
 ### L2 — Integrated data (`data/L2/`)
 
 L2 contains **integrated datasets**, where information from multiple sources is combined.
-
-Typical operations include:
-- merging disperse flight data into a single, unified representation
-- joining flight-level and vector-level data
 
 ```bash
 data/L2/
@@ -79,17 +86,9 @@ data/L2/
 └── taf/            # Consolidated weather forecasts at the airport
 ```
 
----
-
 ### L3 — Clean and enrich trajectories (`data/L3/`)
 
-L3 represents the **final trajectory products**, ready for analysis, visualization and evaluation.
-
-At this level:
-- trajectories are temporally consistent
-- sorting and interpolation have been applied
-- outliers and artifacts have been removed
-- weather forecasts have been incorporated to the trajectory data
+L3 represents the **final trajectory products**, ready for analysis, visualization and evaluation. At this level, the main issues affecting data quality in trahectories have been tackled (incorrect timestamps, outliers, etc.), and the weather forecast information has been integrated with the trajectory.
 
 ```bash
 data/L3/
@@ -100,9 +99,7 @@ data/L3/
 
 ## Reports directory (`reports/`)
 
-The `reports/` directory contains **quality metrics and diagnostic outputs** generated during processing.
-
-Metrics are also organized by maturity level.
+The `reports/` directory contains **quality metrics and diagnostic outputs** generated during processing. Metrics are also organized by maturity level.
 
 ```bash
 reports/
@@ -119,11 +116,6 @@ reports/
 ├── L2_integration_metrics/
 └── L3_sort_metrics/
 ```
-
-These reports support:
-- data quality assessment
-- pipeline validation
-- comparison across processing stages
 
 ---
 

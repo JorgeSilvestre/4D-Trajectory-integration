@@ -1,12 +1,12 @@
-"""TAF weather cleaning pipeline (L0 → L1).
+""" TAF weather cleaning pipeline (L0 → L1).
 
-This module transforms decoded TAF forecast records into an L1 parquet dataset
+This module transforms decoded TAF forecast records into L1 parquet dataset
 with normalized schema, UTC-aware temporal fields, and extracted weather
 substructures (temperature and sky conditions).
 
 Main stages:
-- `taf_forecast_normalize_schema`: drop unused fields, convert dtypes, extract
-  nested weather lists into scalar columns.
+- `taf_forecast_normalize_schema`: Schema normalization by dropping unused columns,
+   and extracting nested weather lists into scalar columns.
 - `taf_forecast_clean`: apply deterministic value fixes and null handling.
 - `taf_forecast_process`: orchestrate parallel chunk processing and persistence.
 """
@@ -56,6 +56,7 @@ def taf_forecast_process(month: str) -> None:
     data.to_parquet(output_file, index=False)
 
 def _process_taf_forecast_chunk(data: pd.DataFrame) -> pd.DataFrame:
+    """ Utility function to enable multiprocessing. """
     return taf_forecast_clean(taf_forecast_normalize_schema(data))
 
 def taf_forecast_normalize_schema(data: pd.DataFrame) -> pd.DataFrame:

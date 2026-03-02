@@ -205,10 +205,10 @@ with columns_content[0]:
 
 traj = trajectories[traj_id]
 
-fig_map_old = map_graph(traj.vectors, False)
-fig_latitude_old = line_graph(traj.vectors, 'latitude')
-fig_longitude_old = line_graph(traj.vectors, 'longitude')
-fig_altitude_old = line_graph(traj.vectors, 'altitude')
+fig_map_old = map_graph(traj.state_vectors, False)
+fig_latitude_old = line_graph(traj.state_vectors, 'latitude')
+fig_longitude_old = line_graph(traj.state_vectors, 'longitude')
+fig_altitude_old = line_graph(traj.state_vectors, 'altitude')
 
 with original_traj_graphs[0]:
     st.plotly_chart(fig_map_old, width='stretch', config={'scrollZoom': True})
@@ -220,7 +220,7 @@ with original_traj_graphs[3]:
     st.plotly_chart(fig_altitude_old, width='stretch')
 with df_container_old:
     with st.expander(label='Original data'):
-        st.dataframe(traj.vectors.reset_index())
+        st.dataframe(traj.state_vectors.reset_index())
 
 if go_button:
     with result_string:
@@ -233,7 +233,7 @@ if go_button:
                 check_loop=False,
                 log=False
             )
-        old_dist = sorting_algorithms.path_length(traj.vectors[['latitude', 'longitude']].to_numpy(dtype='float32'),
+        old_dist = sorting_algorithms.path_length(traj.state_vectors[['latitude', 'longitude']].to_numpy(dtype='float32'),
                                                 distance_function='haversine')
         new_dist = sorting_algorithms.path_length(sorted_traj.vectors[['latitude', 'longitude']].to_numpy(dtype='float32'),
                                                 distance_function='haversine')

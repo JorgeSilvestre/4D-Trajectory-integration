@@ -12,6 +12,51 @@ from pyarrow.types import is_decimal
 LEMD_LATITUDE = 40.4922683
 LEMD_LONGITUDE = -3.5629642
 
+
+def get_dates_between(date_start: str, date_end: str) -> list[datetime.datetime]:
+    """Retrieves a list of datetime objects between two dates.
+
+    Args:
+        date_start: Start date in YYYY-MM-DD format
+        date_end: End date in YYYY-MM-DD format
+
+    """
+    date_start = datetime.datetime.strptime(date_start, '%Y-%m-%d')
+    date_end   = datetime.datetime.strptime(date_end,   '%Y-%m-%d')
+    dates      = [(date_start + datetime.timedelta(days=x))
+                  for x in range((date_end - date_start).days + 1)]
+    return dates
+
+def custom_json_encoder(obj) -> str:
+    # TODO: Improve custom JSON encoder
+    # https://docs.python.org/3/library/json.html#encoders-and-decoders
+    # https://blog.scriptserpent.club/custom-json-encoders-c028ddca8714
+    # https://mathspp.com/blog/til/custom-json-encoder#custom-json-encoding-of-python-objects
+    if isinstance(obj, (datetime.date, datetime.timedelta)):
+        return str(obj)
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+    if isinstance(obj, bson.objectid.ObjectId):
+        return str(obj)
+    if pd.isna(obj):
+        return None
+    if is_decimal(obj):
+        return float(obj)
+    raise TypeError("Type not serializable")
+
+class CustomJSONEncoder(json.JSONEncoder):
+    # https://stackoverflow.com/questions/65411519/typeerror-object-of-type-natype-is-not-json-serializable
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, bson.objectid.ObjectId):
+            return str(obj)
+        if pd.isna(obj):
+            return None
+        return json.JSONEncoder.default(self, obj)
+    
+# FIXME: Borrar
+
 def haversine_np(lat1: np.array, lon1: np.array, lat2: np.array = LEMD_LATITUDE,
                  lon2: np.array = LEMD_LONGITUDE, h1: np.array = None, h2: np.array = None,
                  angle: bool = False) -> np.array:
@@ -92,41 +137,3 @@ def haversine_np_track(lat1: np.array, lon1: np.array, lat2: np.array = LEMD_LAT
         mi = mi * (1 + 5*dtrack)
     return mi
 
-def get_dates_between(date_start: str, date_end: str) -> list[datetime.datetime]:
-    """Retrieves a list of datetime objects between two dates.
-
-    Args:
-        date_start: Start date in YYYY-MM-DD format
-        date_end: End date in YYYY-MM-DD format
-
-    """
-    date_start = datetime.datetime.strptime(date_start, '%Y-%m-%d')
-    date_end   = datetime.datetime.strptime(date_end,   '%Y-%m-%d')
-    dates      = [(date_start + datetime.timedelta(days=x))
-                  for x in range((date_end - date_start).days + 1)]
-    return dates
-
-def custom_json_encoder(obj) -> str:
-    if isinstance(obj, (datetime.date, datetime.timedelta)):
-        return str(obj)
-    if isinstance(obj, datetime.datetime):
-        return obj.isoformat()
-    if isinstance(obj, bson.objectid.ObjectId):
-        return str(obj)
-    if pd.isna(obj):
-        return None
-    if is_decimal(obj):
-        return float(obj)
-    raise TypeError("Type not serializable")
-
-# FIXME: Borrar
-class CustomJSONEncoder(json.JSONEncoder):
-    # https://stackoverflow.com/questions/65411519/typeerror-object-of-type-natype-is-not-json-serializable
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        if isinstance(obj, bson.objectid.ObjectId):
-            return str(obj)
-        if pd.isna(obj):
-            return None
-        return json.JSONEncoder.default(self, obj)

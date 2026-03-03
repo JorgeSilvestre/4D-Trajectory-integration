@@ -2,9 +2,9 @@
 
 ## Overview of the data workflow
 
-<figure align="center" >
-<img src="./assets/placeholder.webp" width="400px"  alt="">
-<figcaption></figcaption>
+<figure><p align="center">
+<img src="assets/data_workflow_overview.png" width="600"  alt=""></p>
+<figcaption><p align="center">Overview of the data workflow.</p></figcaption>
 </figure>
 
 
@@ -37,11 +37,6 @@ Each of these steps is implemented as a sub-package of the `trajectoryProcessing
 
 ## Workflow implementation
 
-<figure><p align="center">
-<img src="assets/data_workflow_overview.png" width="600"  alt=""></p>
-<figcaption><p align="center">Overview of the data workflow.</p></figcaption>
-</figure>
-
 - [Directory organization](./pipeline/folder_structure.md)
 - [Cleaning pipeline](./pipeline/cleaning.md)
 - [Integration pipeline](./pipeline/integration.md)
@@ -51,7 +46,6 @@ Each of these steps is implemented as a sub-package of the `trajectoryProcessing
 
 - [Individual sources](./data_quality/individual_sources.md)
 - [4D Trajectories](./data_quality/4dtrajectories.md)
-- [Metrics](./data_quality/quality_metrics.md)
 
 ## Visualization
 

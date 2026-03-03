@@ -9,7 +9,7 @@ The raw feed is delivered as deeply nested JSON messages and is processed into t
 - **FPLAN (Flight Plan)**: intent-oriented flight-plan messages.
 - **FDATA (Flight Data)**: execution/status updates with versioned state.
 
-FPLAN and FDATA are linked by `ifplId`,
+FPLAN and FDATA are linked by `ifplId`, the unique identifier of the flight that originates the flight plan messages.
 
 ---
 

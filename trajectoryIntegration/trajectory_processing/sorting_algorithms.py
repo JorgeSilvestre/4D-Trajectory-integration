@@ -5,10 +5,10 @@ from .. import params
 
 # Distance functions
 
-def euclidean_distance(coords1, coords2):
+def euclidean_distance(coords1: np.array, coords2: np.array):
     return np.sqrt(np.sum(np.power(coords2-coords1, 2), axis=1))
 
-def haversine_distance(coords1, coords2, unit='mi'):
+def haversine_distance(coords1: np.array, coords2: np.array, units: str='mi'):
     # https://www.movable-type.co.uk/scripts/latlong.html
     coords1, coords2 = map(np.radians, [coords1, coords2])
     diff_lat = coords2[:,0] - coords1[:,0]
@@ -17,9 +17,9 @@ def haversine_distance(coords1, coords2, unit='mi'):
 
     a = np.sin(diff_lat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(diff_lon/2.0)**2
     c = 2 * np.arcsin(np.sqrt(a))
-    if unit=='mi':
+    if units=='mi':
         dist = 3959.87433 * c
-    elif unit=='km':
+    elif units=='km':
         dist = 6372.8 * c
 
     # Altitude
@@ -34,7 +34,7 @@ def haversine_distance(coords1, coords2, unit='mi'):
 
     return dist
 
-def distance_matrix(positions, distance_function='euclidean'):
+def distance_matrix(positions: np.array, distance_function: str='euclidean'):
     if distance_function == 'euclidean':
         diffs = euclidean_distance(np.expand_dims(positions.transpose(),0),
                                    np.expand_dims(positions,2))
@@ -45,7 +45,7 @@ def distance_matrix(positions, distance_function='euclidean'):
 
     return np.sqrt(np.sum(np.power(np.expand_dims(positions,2)-np.expand_dims(positions.transpose(),0), 2), axis=1))
 
-def path_length(positions, distance_function='haversine'):
+def path_length(positions: np.array, distance_function: str='haversine'):
     if distance_function == 'euclidean':
         diffs = euclidean_distance(positions[:-1], positions[1:])
         return np.sum(diffs, axis=0)
@@ -53,7 +53,7 @@ def path_length(positions, distance_function='haversine'):
         diffs = haversine_distance(positions[:-1], positions[1:])
         return np.sum(diffs, axis=0)
 
-def haversine_cost_function(coords, thetas, unit='mi'):
+def haversine_cost_function(coords: np.array, thetas: np.array, units: str='mi'):
     pass
 
 def sort_by_distance_reference_point(df):
@@ -61,7 +61,7 @@ def sort_by_distance_reference_point(df):
 
 # Algorithms
 
-def nearest_neighbours(df: pd.DataFrame, distance_function='haversine', **kwargs):
+def nearest_neighbours(df: pd.DataFrame, distance_function: str='haversine', **kwargs):
     df = df.copy()
     if 'old_index' not in df.columns:
         df = df.reset_index(drop=False).rename(columns={'index':'old_index'})
@@ -99,7 +99,7 @@ def _generate_changes(start:int, end:int, skip:int = 1) -> list[tuple[int,int]]:
     changes = [(v1,v2) for v1 in range(start+skip, end-start-2) for v2 in range(v1+1, end-start-1)]
     return changes
 
-def opt2(df: pd.DataFrame, distance_function='haversine', **kwargs):
+def opt2(df: pd.DataFrame, distance_function: str='haversine', **kwargs):
     df = df.copy()
     if 'old_index' not in df.columns:
         df = df.reset_index(drop=False).rename(columns={'index':'old_index'})
@@ -126,7 +126,7 @@ def opt2(df: pd.DataFrame, distance_function='haversine', **kwargs):
         raise TimeoutError('Too many iterations during the application of Opt-2.')
     return df.iloc[order]
 
-def opt2_reversed(df: pd.DataFrame, distance_function='haversine', **kwargs):
+def opt2_reversed(df: pd.DataFrame, distance_function: str='haversine', **kwargs):
     df = df.copy()
     df = df.iloc[::-1]
     df = opt2(df.iloc[::-1], distance_function)
@@ -182,7 +182,7 @@ def opt2_progressive_reversed(df: pd.DataFrame, window_size:int, overlap:int, di
 
     return df
 
-def opt2_restricted(df: pd.DataFrame, n_closest=10, distance_function='haversine', **kwargs):
+def opt2_restricted(df: pd.DataFrame, n_closest: int=10, distance_function: str='haversine', **kwargs):
     df = df.copy()
     if 'old_index' not in df.columns:
         df = df.reset_index(drop=False).rename(columns={'index':'old_index'})

@@ -1,10 +1,5 @@
 # 4D-Trajectory-integration
 
-<figure align="center" >
-<img src="docs/assets/placeholder.webp" width="400px"  alt="">
-<figcaption></figcaption>
-</figure>
-
 ## What is this repository
 
 This repository collects materials related to the integration of enriched 4D trajectories in the field of air traffic management (ATM). This is a non-trivial problem, given that ATM-related data is currently scattered across different heterogeneous data sources that are difficult to integrate due to differences in data structure, nature, and quality.

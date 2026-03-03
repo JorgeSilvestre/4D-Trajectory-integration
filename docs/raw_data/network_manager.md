@@ -125,7 +125,7 @@ We only leverage flight data at the moment in this project. Flight data is provi
 | Actual Arrival Time | datetime (UTC) | `01-06-2023 07:57:13` | Time of arrival (UTC) based on the ATFM-updated flight plan. It is the time at which the aircraft lands at the aerodrome. |
 | AC Type | string | `"A359"` | ICAO aircraft type designator.  |
 | AC Operator | string | `"DAL"` | Three-letter ICAO operator code. If the operator is unknown, not provided in the flight plan the value is "ZZZ".  |
-| AC Registration | string | `"N576DZ"` | Aircraft registration. |
+| AC Registration | string | `"N576DZ"` | Callsign of the flight. |
 | ICAO Flight Type | string | `"S"` | ICAO Flight Type: S – Scheduled, N - Non-scheduled commercial operation |
 | Requested FL | float64 | `370.0` | Requested cruising flight level from the flight plan.  |
 | Actual Distance Flown (nm) | int64 | `3508` | Distance flown in nautical miles. |

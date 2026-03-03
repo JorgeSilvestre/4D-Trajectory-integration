@@ -1,51 +1,29 @@
 # Data Integration Pipeline (L1 → L2)
 
-This document describes the data integration stage that combines cleaned individual sources (L1) into integrated datasets (L2). The primary output of this stage is the construction of raw 4D trajectories by matching flight metadata with surveillance observations.
+This document describes the data integration stage that combines cleaned individual sources (L1) into integrated datasets (L2). The primary output of this stage is the construction of raw 4D trajectories by matching flight metadata (either from Network Manager or Eurocontrol's ADRR) with surveillance observations. Weather data is also consolidated to provide a continuous representation of the forecasted weather conditions at the destination airport.
 
 ---
 
-## Overview
+## Network Manager Flight consolidation
 
-The integration pipeline operates on L1 cleaned data and produces L2 integrated datasets. The process consists of two main stages:
-
-1. **Flight Record Consolidation**: Merging Network Manager flight plans and flight data
-2. **Trajectory Construction**: Matching flight records with OpenSky state vectors
-
----
-
-## Stage 1: Flight Record Consolidation
-
-### Purpose
-
-Network Manager provides flight information through two complementary data streams:
+Network Manager provides flight information through two complementary data streams that must be merged to create a complete view of each flight:
 - **Flight Plans (FPLAN)**: Pre-flight planned information
 - **Flight Data (FDATA)**: Operational execution information
 
-These must be merged to create a complete view of each flight containing both planned and actual operational data.
+### Version Selection
 
-### Consolidation Process
+Both FPLAN and FDATA messages are versioned and may be updated multiple times per flight. The most updated information is selected for each category:
 
-#### Version Selection
+- **Flight Plan:** Select the last message per flight (by timestamp)
+- **Flight Data:** For TERMINATED flights with multiple updates, select first TERMINATED message (since in some flights later messages ammend the previous, and contain only some attributes); otherwise select latest version.
 
-Both FPLAN and FDATA messages are versioned and may be updated multiple times per flight.
+### Attribute Consolidation
 
-**Flight Plan:** Select the last message per flight (by timestamp)
-- Rationale: Latest version contains most complete and up-to-date planning information
+When attributes appear in both sources, the values in FDATA values are preferred over FPLAN values (actual over planned). Consolidated attributes include: `icao24`, `callsign`, `estimatedOffBlockTime`, `aerodromeOfDeparture`, `aerodromeOfDestination`, `operator`, `operatingOperator`, `aircraftType`.
 
-**Flight Data:** For TERMINATED flights with multiple updates, select first TERMINATED message; otherwise select latest version
-- Rationale: Avoid using late updates that modify arrival times after landing
+### Temporal Consistency Validation
 
-#### Attribute Consolidation
-
-When attributes appear in both sources, conflicts are resolved by:
-- **Preferring FDATA values** over FPLAN values (actual over planned)
-- Using `combine_first()` to fill missing values from either source
-
-Consolidated attributes include: `icao24`, `callsign`, `estimatedOffBlockTime`, `aerodromeOfDeparture`, `aerodromeOfDestination`, `operator`, `operatingOperator`, `aircraftType` (all FDATA preferred).
-
-#### Temporal Consistency Validation
-
-After merging, flights are filtered to ensure FPLAN and FDATA refer to the same flight:
+We have detected some flight ID reutilizations across long periods of time. After merging, flights are filtered to ensure FPLAN and FDATA refer to the same flight:
 
 ```python
 valid_flights = flights[
@@ -54,51 +32,29 @@ valid_flights = flights[
 ]
 ```
 
-**Purpose:** Detect ifplId reuse where FPLAN and FDATA refer to different flights.
-
-### Output
-
-**Location:** `data/L1/nmFlights/nm.flights.{date}.parquet`
-
-**Schema:** 22 attributes combining FPLAN and FDATA information (see FLIGHT_ATTRIBUTE_NAMES in code)
-
----
-
-## Stage 2: Trajectory Construction
-
-### Purpose
+## Trajectory construction
 
 Match consolidated flight records with OpenSky state vectors to construct 4D trajectories. Each trajectory consists of:
 - Flight metadata (origin, destination, times, identifiers)
 - Sequence of state vectors (position, velocity, altitude observations)
 
-### Matching Strategy
+Matching these data leverages aircraft or flight identifiers available. In particular, Network Manager enables matching by ICAO24 address and callsign, while ADRR only supports matching by flight callsign. In addition to identifier matching, temporal filtering is also applied to ensure that state vectors are assigned to the correct flight.
 
-#### Identifier Matching
-
-State vectors are matched to flights by **ICAO24 aircraft address**.
-
-**Rationale:**
-- ICAO24 is globally unique aircraft identifier
-- More reliable than callsign (which can be missing or reused)
-- Directly comparable between NM and OpenSky data
-
-**Optimization:** Vectors are pre-filtered to only include ICAO24 values present in the flight list before joining.
-
-#### Temporal Filtering
-
-After identifier matching, vectors are filtered by temporal overlap with flight execution:
+To this end, state vectors are filtered based on the reported takeoff and landing times, with a tolerance threshold (`TIME_EXPANSION`) to account for potential desynchronization between data sources and delays in the reception of surveillance data. Flights extracted from ADRR use off-block time instead of takeoff time, since the latter is not available in the dataset.
 
 ```python
+# NM
 matched_vectors = vectors[
     (timestamp >= actualTakeOffTime - TIME_EXPANSION) &
     (timestamp <= actualTimeOfArrival + TIME_EXPANSION)
 ]
+
+# ADRR
+matched_vectors = vectors[
+    (timestamp >= actualOffBlockTime - TIME_EXPANSION) &
+    (timestamp <= actualTimeOfArrival + TIME_EXPANSION)
+]
 ```
-
-**TIME_EXPANSION:** 600 seconds (10 minutes)
-
-**Purpose:** Account for uncertainty in actual times and capture vectors near airports.
 
 ### Processing Flow
 
@@ -106,7 +62,7 @@ matched_vectors = vectors[
 2. Remove return flights (same origin and destination)
 3. For each state vector file:
    - Load vectors
-   - Pre-filter by ICAO24
+   - Pre-filter by ICAO24/callsign
    - Join with flights
    - Filter by temporal overlap
    - Accumulate matched vectors
@@ -118,45 +74,7 @@ matched_vectors = vectors[
 
 Flights crossing midnight require loading vectors from both the current date and the next day, as OpenSky vectors are partitioned by date.
 
-### Output Structure
-
-#### Trajectory Vectors (Parquet)
-
-**Location:** `data/L2/nmTrajectories/tray.{date}.parquet`
-
-All state vectors for all trajectories in a single file, with `ifplId` added to link to flight metadata.
-
-#### Trajectory Metadata (JSON)
-
-**Location:** `data/L2/nmTrajectories/flightDate={date}/tray.{ifplId}.json`
-
-One JSON file per trajectory containing:
-- Flight identifiers and airports
-- Temporal information (estimated, actual, observation times)
-- Vector count and data sources
-- Processing status marker
-
-#### Integration Metrics (JSON)
-
-**Location:** `reports/L2_integration_metrics/integration.{date}.json`
-
-Tracks integration success rates and data volume:
-
-| Metric | Description |
-|--------|-------------|
-| `num_flights_initial` | Flights after airport filtering |
-| `num_flights` | Flights after removing return flights |
-| `returned_flights` | Removed return flights |
-| `num_vectors` | Total state vectors processed |
-| `num_joined_vectors` | Vectors matched to flights |
-| `num_joined_flights` | Flights with matched vectors |
-| `num_joined_vectors_final` | Vectors after trajectory filtering |
-| `num_joined_flights_final` | Final trajectory count |
-| `removed_short_trajectories` | Trajectories below minimum threshold |
-
----
-
-## Integration Parameters
+### Integration Parameters
 
 Defined in `trajectoryIntegration/params.py`:
 
@@ -167,19 +85,50 @@ Defined in `trajectoryIntegration/params.py`:
 
 ---
 
-## Relationship with Pipeline Stages
 
-```
-L0 (Raw)          L1 (Cleaned)        L2 (Integrated)     L3 (Trajectories)
-────────          ────────────        ───────────────     ─────────────────
-NM FPLAN    →     NM FPLAN     ──┐
-                                 ├──→  NM Flights ──┐
-NM FDATA    →     NM FDATA     ──┘                  │
-                                                    ├──→  Raw         →  Clean
-OpenSky     →     OpenSky      ─────────────────────┘     Trajectories   Trajectories
-Vectors           Vectors                                 (L2)           (L3)
-```
+## Integration Metrics (JSON)
 
-**Input from L1:** Cleaned, deduplicated, normalized individual sources with schema standardization complete.
+**Location:** `reports/L2_integration_metrics/integration.{date}.json`
 
-**Output to L3:** Integrated trajectories with matched surveillance and metadata, ready for trajectory-specific processing (sorting, outlier removal).
+Aggregated per date.
+
+| Metric | Description |
+|--------|-------------|
+| `num_vectors_initial` | Total state vectors processed |
+| `num_flights_initial` | Flights after airport filtering |
+| `num_vectors_joined` | Vectors matched to flights |
+| `num_flights_joined` | Flights with matched vectors |
+| `num_vectors_final` | Vectors after trajectory filtering |
+| `num_flights_final` | Final trajectory count |
+| `removed_short_trajectories` | Trajectories below minimum threshold |
+
+---
+
+## Weather conditions
+
+Weather conditions at the airport are continuously evolving: to provide an accurate description of such conditions, it is necessary to keep track of the updates across different forecasts.
+
+TAF reports are published every 6 hours, and provide a forecast describing the following 30 hours. New forecasts can be published in addition to the routine periodicity if the weather conditions change drastically, or if ammendments or corrections have to be made to previous forecasts. Thus, the _current weather forecast_ at the airport is consolidated as follows:
+
+1. Routine forecasts define the _base_ weather conditions for the next 30 hours. 
+2. If stable changes (BECMG clauses) are expected to occur, the new conditions superseed the base conditions.
+3. If temporal changes (TEMPO clauses), which only last a limited amount of time, are included in the routine report, the temporal conditions superseed any base or stable conditions.
+4. The publication of new routine forecasts, corrections (COR reports) and amendments (AMD reports), superseeds all previous forecasts.
+
+<figure><p align="center">
+<img src="../assets/weather_report.png" width="700"  alt=""></p>
+<figcaption><p align="center">Overview of the cleaning pipeline.</p></figcaption>
+</figure>
+
+The validity period of each forecast is calculated according to their type:
+1. Base conditions (routine, COR, AMD) are set to be valid up to 30h since the issue time, unless stated otherwise.
+2. Stable changes are set to be valid from the moment they occur (`time_from`) up to the validity limit of the report.
+3. Temporal changes are valid during the period indicated by `time_from` and `time_to` attributes of the TEMPO clause.
+
+Currently, potential changes (PROB30|40 clauses) are not used to describe weather conditions at the airport.
+
+As a result, the weather at the airport is described by a set of weather conditions that start at a given timestamp, and last until the validity time limit defined for that prevalent weather conditions (that is, until different conditions are forecasted either by changes or new forecasts). 
+
+### Matching between State vectors and weather conditions
+
+Each state vector is assigned the weather conditions that are current at the airport at the timestamp of that vector, that is, the weather conditions which validity period contains the moment the state vector was emmited.
